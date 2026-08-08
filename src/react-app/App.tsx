@@ -23,7 +23,6 @@ import {
   getRowStyle,
   getStatusBoxStyle,
   getStatusTextStyle,
-  getTimelineCardStyle,
 } from "./appStyles";
 import logo from "./assets/ganadotech-logo.png";
 
@@ -80,9 +79,11 @@ const monthNames = [
   "dec",
 ];
 
-const PARALLAX_PAGES = 2.3;
-const TABLE_OFFSET = 0.82;
-const REMINDER_OFFSET = 1.42;
+const PARALLAX_PAGES = 3.12;
+const TABLE_OFFSET = 1.06;
+const CALENDAR_OFFSET = 1.82;
+const CHAT_OFFSET = 2.50;
+const SIMULATION_LAST_DAY = 21;
 
 function App() {
   const [isRecording, setIsRecording] =
@@ -110,6 +111,18 @@ function App() {
     useState<number | null>(null);
   const [latestRegisteredCow, setLatestRegisteredCow] =
     useState<CattleRecord | null>(null);
+  const [simulatedDay, setSimulatedDay] =
+    useState(1);
+  const [isSimulating, setIsSimulating] =
+    useState(false);
+  const [simulationFinished, setSimulationFinished] =
+    useState(false);
+  const [typedWordCount, setTypedWordCount] =
+    useState(0);
+  const [farmerTypedWordCount, setFarmerTypedWordCount] =
+    useState(0);
+  const [vetTypedWordCount, setVetTypedWordCount] =
+    useState(0);
 
   const mediaRecorderRef =
     useRef<MediaRecorder | null>(null);
@@ -119,6 +132,14 @@ function App() {
     useRef<number | null>(null);
   const parallaxRef =
     useRef<IParallax | null>(null);
+  const simulationTimerRef =
+    useRef<number | null>(null);
+  const typingTimerRef =
+    useRef<number | null>(null);
+  const chatScrollTimerRef =
+    useRef<number | null>(null);
+  const tableTransitionTimerRef =
+    useRef<number | null>(null);
 
   const loadCattle = useCallback(
     async () => {
@@ -194,6 +215,42 @@ function App() {
         clearTimeout(timeoutRef.current);
       }
 
+      if (
+        simulationTimerRef.current !==
+        null
+      ) {
+        clearTimeout(
+          simulationTimerRef.current,
+        );
+      }
+
+      if (
+        typingTimerRef.current !==
+        null
+      ) {
+        clearTimeout(
+          typingTimerRef.current,
+        );
+      }
+
+      if (
+        chatScrollTimerRef.current !==
+        null
+      ) {
+        clearTimeout(
+          chatScrollTimerRef.current,
+        );
+      }
+
+      if (
+        tableTransitionTimerRef.current !==
+        null
+      ) {
+        clearTimeout(
+          tableTransitionTimerRef.current,
+        );
+      }
+
       streamRef.current
         ?.getTracks()
         .forEach((track) =>
@@ -211,15 +268,44 @@ function App() {
       return;
     }
 
+    if (
+      tableTransitionTimerRef.current !==
+      null
+    ) {
+      clearTimeout(
+        tableTransitionTimerRef.current,
+      );
+      tableTransitionTimerRef.current =
+        null;
+    }
+
     const scrollTimer =
       window.setTimeout(() => {
         parallaxRef.current?.scrollTo(
           TABLE_OFFSET,
         );
+
+        tableTransitionTimerRef.current =
+          window.setTimeout(() => {
+            tableTransitionTimerRef.current =
+              null;
+            scrollToCalendar();
+          }, 3000);
       }, 160);
 
     return () => {
       clearTimeout(scrollTimer);
+
+      if (
+        tableTransitionTimerRef.current !==
+        null
+      ) {
+        clearTimeout(
+          tableTransitionTimerRef.current,
+        );
+        tableTransitionTimerRef.current =
+          null;
+      }
     };
   }, [recentRecordId]);
 
@@ -239,6 +325,48 @@ function App() {
       timeoutRef.current = null;
     }
   };
+
+  const clearSimulationTimer =
+    () => {
+      if (
+        simulationTimerRef.current !==
+        null
+      ) {
+        clearTimeout(
+          simulationTimerRef.current,
+        );
+        simulationTimerRef.current =
+          null;
+      }
+    };
+
+  const clearTypingTimer =
+    () => {
+      if (
+        typingTimerRef.current !==
+        null
+      ) {
+        clearTimeout(
+          typingTimerRef.current,
+        );
+        typingTimerRef.current =
+          null;
+      }
+    };
+
+  const clearChatScrollTimer =
+    () => {
+      if (
+        chatScrollTimerRef.current !==
+        null
+      ) {
+        clearTimeout(
+          chatScrollTimerRef.current,
+        );
+        chatScrollTimerRef.current =
+          null;
+      }
+    };
 
   const parseJson = (
     value: string,
@@ -524,7 +652,7 @@ function App() {
             id: result.id,
             name: result.name,
             last_heat_date:
-              result.last_heat_date,
+            result.last_heat_date,
           },
         );
 
@@ -542,7 +670,9 @@ function App() {
         null;
 
       setRecentRecordId(matchedRecordId);
-      setLatestRegisteredCow(matchedRecord);
+      setLatestRegisteredCow(
+        matchedRecord,
+      );
     } catch (error) {
       console.error(
         "Audio upload error:",
@@ -582,27 +712,223 @@ function App() {
     })
     .slice(0, 5);
 
-  const reminderCow =
+  const recentCow =
     latestRegisteredCow ||
+    cattle.find(
+      (record) =>
+        record.id === recentRecordId,
+    ) ||
     visibleCattle.find(
       (record) =>
         record.id === recentRecordId,
     ) ||
     null;
 
-  const tomorrow = new Date();
-  tomorrow.setDate(
-    tomorrow.getDate() + 1,
-  );
+  const chatWords = [
+    "Hi",
+    "Farmer,",
+    "the",
+    "cow",
+    recentCow?.name ||
+      "lastnameofthecow",
+    "is",
+    "ready",
+    "to",
+    "be",
+    "inseminated",
+    "tomorrow.",
+  ];
+  const farmerChatWords = [
+    "Okay",
+    "👍,",
+    "working",
+    "on",
+    "it.",
+  ];
+  const vetChatWords = [
+    "💉",
+    "Preparing",
+    "insemination",
+    "materials.",
+  ];
 
-  const tomorrowLabel =
-    formatDateObject(tomorrow);
-
-  const scrollToReminder = () => {
+  const scrollToCalendar = () => {
     parallaxRef.current?.scrollTo(
-      REMINDER_OFFSET,
+      CALENDAR_OFFSET,
     );
+
+    window.setTimeout(() => {
+      startSimulation();
+    }, 520);
   };
+
+  const startSimulation = () => {
+    clearSimulationTimer();
+    clearTypingTimer();
+    clearChatScrollTimer();
+    setSimulatedDay(1);
+    setSimulationFinished(false);
+    setIsSimulating(true);
+    setTypedWordCount(0);
+    setFarmerTypedWordCount(0);
+    setVetTypedWordCount(0);
+
+    runSimulationStep(1);
+  };
+
+  const getSimulationDelay = (
+    currentDay: number,
+  ) => {
+    if (currentDay <= 3) {
+      return 170;
+    }
+
+    if (currentDay <= 6) {
+      return 120;
+    }
+
+    if (currentDay <= 19) {
+      return 68;
+    }
+
+    return 190;
+  };
+
+  const runSimulationStep = (
+    currentDay: number,
+  ) => {
+    if (
+      currentDay >=
+      SIMULATION_LAST_DAY
+    ) {
+      clearSimulationTimer();
+      setSimulatedDay(
+        SIMULATION_LAST_DAY,
+      );
+      setIsSimulating(false);
+      setSimulationFinished(true);
+      return;
+    }
+
+    simulationTimerRef.current =
+      window.setTimeout(() => {
+        const nextDay =
+          currentDay + 1;
+
+        setSimulatedDay(nextDay);
+        runSimulationStep(nextDay);
+      }, getSimulationDelay(currentDay));
+  };
+
+  useEffect(() => {
+    clearTypingTimer();
+    clearChatScrollTimer();
+
+    if (!simulationFinished) {
+      return;
+    }
+
+    chatScrollTimerRef.current =
+      window.setTimeout(() => {
+        parallaxRef.current?.scrollTo(
+          CHAT_OFFSET,
+        );
+      }, 520);
+
+    let nextWordIndex = 0;
+    let activeSpeaker:
+      | "ganado"
+      | "farmer"
+      | "vet" = "ganado";
+
+    setTypedWordCount(0);
+    setFarmerTypedWordCount(0);
+    setVetTypedWordCount(0);
+
+    const typeNextWord = () => {
+      nextWordIndex += 1;
+
+      if (activeSpeaker === "ganado") {
+        setTypedWordCount(nextWordIndex);
+
+        if (
+          nextWordIndex >=
+          chatWords.length
+        ) {
+          activeSpeaker = "farmer";
+          nextWordIndex = 0;
+          typingTimerRef.current =
+            window.setTimeout(
+              typeNextWord,
+              420,
+            );
+          return;
+        }
+
+        typingTimerRef.current =
+          window.setTimeout(
+            typeNextWord,
+            150,
+          );
+        return;
+      }
+
+      if (activeSpeaker === "farmer") {
+        setFarmerTypedWordCount(
+          nextWordIndex,
+        );
+
+        if (
+          nextWordIndex >=
+          farmerChatWords.length
+        ) {
+          activeSpeaker = "vet";
+          nextWordIndex = 0;
+          typingTimerRef.current =
+            window.setTimeout(
+              typeNextWord,
+              420,
+            );
+          return;
+        }
+
+        typingTimerRef.current =
+          window.setTimeout(
+            typeNextWord,
+            135,
+          );
+        return;
+      }
+
+      setVetTypedWordCount(nextWordIndex);
+
+      if (
+        nextWordIndex >=
+        vetChatWords.length
+      ) {
+        typingTimerRef.current =
+          null;
+        return;
+      }
+
+      typingTimerRef.current =
+        window.setTimeout(
+          typeNextWord,
+          140,
+        );
+    };
+
+    typingTimerRef.current =
+      window.setTimeout(
+        typeNextWord,
+        980,
+      );
+
+    return () => {
+      clearTypingTimer();
+      clearChatScrollTimer();
+    };
+  }, [simulationFinished, recentCow?.name]);
 
   return (
     <>
@@ -637,7 +963,7 @@ function App() {
         <ParallaxLayer
           offset={0.04}
           speed={0.18}
-          factor={0.72}
+          factor={0.96}
           style={appStyles.layerFrame}
         >
           <div style={appStyles.layerInner}>
@@ -907,20 +1233,37 @@ function App() {
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={loadCattle}
-                    disabled={
-                      isLoadingCattle
+                  <div
+                    style={
+                      appStyles.tableActions
                     }
-                    style={getRefreshButtonStyle(
-                      isLoadingCattle,
-                    )}
                   >
-                    {isLoadingCattle
-                      ? "Loading..."
-                      : "Refresh"}
-                  </button>
+                    <button
+                      type="button"
+                      hidden
+                      style={{
+                        ...appStyles.calendarNavButton,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Calendar ↓
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={loadCattle}
+                      disabled={
+                        isLoadingCattle
+                      }
+                      style={getRefreshButtonStyle(
+                        isLoadingCattle,
+                      )}
+                    >
+                      {isLoadingCattle
+                        ? "Loading..."
+                        : "Refresh"}
+                    </button>
+                  </div>
                 </div>
 
                 {cattleError && (
@@ -1063,208 +1406,327 @@ function App() {
                 )}
               </section>
 
-              {reminderCow && (
-                <div
-                  style={
-                    appStyles.downCueWrap
-                  }
-                >
-                  <div
-                    style={
-                      appStyles.downCueText
-                    }
-                  >
-                    Reminder below
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={scrollToReminder}
-                    aria-label="Scroll to reminder"
-                    style={
-                      appStyles.downCueButton
-                    }
-                  >
-                    ↓
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         </ParallaxLayer>
 
         <ParallaxLayer
-          offset={REMINDER_OFFSET}
+          offset={CALENDAR_OFFSET}
           speed={0.1}
-          factor={0.82}
+          factor={0.66}
           style={appStyles.layerFrame}
         >
           <div style={appStyles.layerInner}>
             <section
-              style={appStyles.reminderSection}
+              style={appStyles.calendarSection}
             >
-              <div
-                style={
-                  appStyles.reminderEyebrow
-                }
-              >
-                Post-Registration Follow-up
-              </div>
-
-              <h2
-                style={appStyles.reminderTitle}
-              >
-                Heat cycle reminder
-              </h2>
-
-              <p
-                style={appStyles.reminderLead}
-              >
-                After a successful audio
-                registration, the farmer can
-                review the latest record and
-                continue into an action-ready
-                reminder flow.
-              </p>
-
-              <div
-                style={
-                  appStyles.timelineWrap
-                }
-              >
-                {[1, 2, 3, 21].map((day) => (
-                  <div
-                    key={day}
-                    style={getTimelineCardStyle(
-                      day === 21,
-                    )}
-                  >
-                    <div
-                      style={
-                        appStyles.timelineLabel
-                      }
-                    >
-                      Day {day}
-                    </div>
-                    <div
-                      style={
-                        appStyles.timelineValue
-                      }
-                    >
-                      {day}
-                    </div>
-                    <div
-                      style={
-                        appStyles.timelineNote
-                      }
-                    >
-                      {day === 21
-                        ? `Expected heat window · ${tomorrowLabel}`
-                        : "Cycle follow-up"}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {reminderCow ? (
+              {isSimulating && (
                 <div
                   style={
-                    appStyles.whatsappShell
+                    appStyles.calendarRunningText
                   }
                 >
-                  <div
-                    style={
-                      appStyles.whatsappHeader
-                    }
-                  >
-                    <div>
-                      <div
-                        style={
-                          appStyles.whatsappTitle
-                        }
-                      >
-                        GanadoTech
-                      </div>
-                      <div
-                        style={
-                          appStyles.whatsappSubtitle
-                        }
-                      >
-                        Reminder scheduled for
-                        Sunday, August 9, 2026
-                      </div>
-                    </div>
-                  </div>
+                  Time passing...
+                </div>
+              )}
 
+              <div
+                style={appStyles.calendarShell}
+              >
+                <div
+                  style={appStyles.calendarFrame}
+                >
                   <div
-                    style={
-                      appStyles.whatsappBody
-                    }
+                    style={appStyles.calendarCard}
                   >
                     <div
-                      style={
-                        appStyles.whatsappPattern
-                      }
-                    />
-
-                    <div
-                      style={appStyles.chatRow}
+                      style={appStyles.calendarTop}
                     >
-                      <div
-                        style={
-                          appStyles.chatBubble
-                        }
-                      >
                         <div
                           style={
-                            appStyles.chatSender
+                            appStyles.calendarTopLabel
                           }
                         >
                           GanadoTech
                         </div>
 
-                        <p
+                      <div
+                        style={
+                          appStyles.calendarBindingRow
+                        }
+                      >
+                        <span
                           style={
-                            appStyles.chatMessage
+                            appStyles.calendarBindingDot
                           }
-                        >
-                          Hi farmer,{" "}
-                          <span
-                            style={
-                              appStyles.chatCowName
-                            }
-                          >
-                            {reminderCow.name}
-                          </span>{" "}
-                          is going to be in
-                          heat tomorrow. Don't
-                          forget to inseminate.
-                        </p>
+                        />
+                        <span
+                          style={
+                            appStyles.calendarBindingDot
+                          }
+                        />
+                        <span
+                          style={
+                            appStyles.calendarBindingDot
+                          }
+                        />
+                      </div>
+                    </div>
 
+                    <div
+                      style={
+                        appStyles.calendarPageStage
+                      }
+                    >
+                      <div
+                        key={simulatedDay}
+                        style={
+                          appStyles.calendarPage
+                        }
+                      >
                         <div
                           style={
-                            appStyles.chatMeta
+                            appStyles.calendarDayLabel
                           }
                         >
-                          Tomorrow ·{" "}
-                          {tomorrowLabel}
+                          Day
+                        </div>
+                        <div
+                          style={
+                            appStyles.calendarDayNumber
+                          }
+                        >
+                          {simulatedDay}
+                        </div>
+                        <div
+                          style={
+                            appStyles.calendarDayFooter
+                          }
+                        >
+                          Cycle progression
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              ) : (
+              </div>
+
+              {simulationFinished && (
                 <div
                   style={
-                    appStyles.reminderFallback
+                    appStyles.calendarComplete
                   }
                 >
-                  Register a cow first to
-                  generate the post-audio
-                  follow-up timeline and
-                  WhatsApp reminder preview.
+                  Day 21 reached
                 </div>
               )}
+            </section>
+          </div>
+        </ParallaxLayer>
+
+        <ParallaxLayer
+          offset={CHAT_OFFSET}
+          speed={0.08}
+          factor={0.58}
+          style={appStyles.layerFrame}
+        >
+          <div style={appStyles.layerInner}>
+            <section
+              style={appStyles.chatSection}
+            >
+              <div style={appStyles.chatHeader}>
+                <div
+                  style={
+                    appStyles.chatHeaderTitle
+                  }
+                >
+                  GanadoTech
+                </div>
+                <div
+                  style={
+                    appStyles.chatHeaderSubtitle
+                  }
+                >
+                  Farmer follow-up
+                </div>
+              </div>
+
+              <div style={appStyles.chatBody}>
+                <div
+                  style={appStyles.chatPattern}
+                />
+
+                <div
+                  style={
+                    appStyles.chatBubbleRow
+                  }
+                >
+                  <div
+                    style={
+                      appStyles.chatBubble
+                    }
+                  >
+                    <div
+                      style={
+                        appStyles.chatSender
+                      }
+                    >
+                      GanadoTech
+                    </div>
+
+                    <p
+                      style={
+                        appStyles.chatMessage
+                      }
+                    >
+                      {chatWords
+                        .slice(
+                          0,
+                          typedWordCount,
+                        )
+                        .map(
+                          (
+                            word,
+                            index,
+                          ) => (
+                            <span
+                              key={`${word}-${index}`}
+                              style={
+                                word ===
+                                (recentCow?.name ||
+                                  "lastnameofthecow")
+                                  ? {
+                                      ...appStyles.chatWord,
+                                      ...appStyles.chatCowName,
+                                    }
+                                  : appStyles.chatWord
+                              }
+                            >
+                              {word}
+                            </span>
+                          ),
+                        )}
+                    </p>
+
+                    <div
+                      style={
+                        appStyles.chatMeta
+                      }
+                    >
+                      Tomorrow
+                    </div>
+                  </div>
+                </div>
+
+                {farmerTypedWordCount >
+                  0 && (
+                  <>
+                    <div
+                      style={
+                        appStyles.chatBubbleRowRight
+                      }
+                    >
+                      <div
+                        style={
+                          appStyles.chatBubbleReply
+                        }
+                      >
+                        <div
+                          style={
+                            appStyles.chatSenderReply
+                          }
+                        >
+                          Farmer 🤠
+                        </div>
+
+                        <p
+                          style={
+                            appStyles.chatReplyMessage
+                          }
+                        >
+                          {farmerChatWords
+                            .slice(
+                              0,
+                              farmerTypedWordCount,
+                            )
+                            .map(
+                              (
+                                word,
+                                index,
+                              ) => (
+                                <span
+                                  key={`${word}-${index}`}
+                                  style={
+                                    appStyles.chatWord
+                                  }
+                                >
+                                  {word}
+                                </span>
+                              ),
+                            )}
+                        </p>
+                      </div>
+                    </div>
+
+                    {vetTypedWordCount >
+                      0 && (
+                      <div
+                        style={{
+                          ...appStyles.chatBubbleRow,
+                          marginTop: "12px",
+                        }}
+                      >
+                        <div
+                          style={
+                            appStyles.chatBubbleVet
+                          }
+                        >
+                          <div
+                            style={
+                              appStyles.chatSenderVet
+                            }
+                          >
+                            Vet 👨‍⚕️
+                          </div>
+
+                          <p
+                            style={
+                              appStyles.chatReplyMessage
+                            }
+                          >
+                            {vetChatWords
+                              .slice(
+                                0,
+                                vetTypedWordCount,
+                              )
+                              .map(
+                                (
+                                  word,
+                                  index,
+                                ) => (
+                                  <span
+                                    key={`${word}-${index}`}
+                                    style={
+                                      word ===
+                                      "💉"
+                                        ? {
+                                            ...appStyles.chatWord,
+                                            ...appStyles.chatNeedle,
+                                          }
+                                        : appStyles.chatWord
+                                    }
+                                  >
+                                    {word}
+                                  </span>
+                                ),
+                              )}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </section>
           </div>
         </ParallaxLayer>

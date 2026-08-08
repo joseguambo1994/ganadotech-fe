@@ -100,6 +100,35 @@ export const appInlineCss = `
     }
   }
 
+  @keyframes calendarFlip {
+    0% {
+      opacity: 0;
+      transform:
+        perspective(1200px)
+        rotateX(-88deg)
+        translateY(-18px);
+      filter: brightness(1.08);
+    }
+
+    55% {
+      opacity: 1;
+      transform:
+        perspective(1200px)
+        rotateX(8deg)
+        translateY(2px);
+      filter: brightness(1);
+    }
+
+    100% {
+      opacity: 1;
+      transform:
+        perspective(1200px)
+        rotateX(0deg)
+        translateY(0);
+      filter: brightness(1);
+    }
+  }
+
   button {
     font-family: inherit;
   }
@@ -167,6 +196,7 @@ export const appStyles = {
   voiceSection: {
     width: "100%",
     maxWidth: "500px",
+    minHeight: "calc(100vh - 48px)",
     background: "#fbfcf8",
     border: "1px solid #d8decf",
     borderRadius: "36px",
@@ -398,6 +428,12 @@ export const appStyles = {
     gap: "16px",
     marginBottom: "18px",
   },
+  tableActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    flexShrink: 0,
+  },
   tableTitle: {
     margin: 0,
     color: "#10140e",
@@ -419,6 +455,18 @@ export const appStyles = {
     padding: "10px 15px",
     fontSize: "13px",
     fontWeight: 700,
+  },
+  calendarNavButton: {
+    border: "1px solid #315a31",
+    background:
+      "linear-gradient(180deg, #416b3b 0%, #315a31 100%)",
+    color: "#ffffff",
+    borderRadius: "12px",
+    padding: "10px 15px",
+    fontSize: "13px",
+    fontWeight: 800,
+    boxShadow:
+      "0 10px 20px rgba(49, 90, 49, 0.16)",
   },
   tableError: {
     padding: "12px 14px",
@@ -544,26 +592,26 @@ export const appStyles = {
     boxShadow:
       "0 12px 24px rgba(51, 75, 46, 0.10)",
   },
-  reminderSection: {
+  calendarSection: {
     width: "100%",
-    maxWidth: "920px",
+    maxWidth: "760px",
     background:
-      "linear-gradient(180deg, #fffef8 0%, #f7f4e7 100%)",
-    border: "1px solid #e1dcc5",
+      "linear-gradient(180deg, #fdfcf5 0%, #f4f2e7 100%)",
+    border: "1px solid #ddd7c0",
     borderRadius: "32px",
     padding: "28px",
     boxShadow:
       "0 22px 56px rgba(90, 86, 60, 0.10)",
   },
-  reminderEyebrow: {
-    color: "#8a6b23",
+  calendarEyebrow: {
+    color: "#65705f",
     fontSize: "12px",
     fontWeight: 800,
     letterSpacing: "1.2px",
     textTransform: "uppercase",
     marginBottom: "10px",
   },
-  reminderTitle: {
+  calendarTitle: {
     margin: 0,
     color: "#1b1f15",
     fontFamily:
@@ -571,102 +619,252 @@ export const appStyles = {
     fontSize: "30px",
     lineHeight: 1.08,
   },
-  reminderLead: {
+  calendarLead: {
     margin: "10px 0 0",
     color: "#59624d",
     fontSize: "14px",
     lineHeight: 1.55,
-    maxWidth: "680px",
+    maxWidth: "620px",
   },
-  timelineWrap: {
+  calendarControlWrap: {
     marginTop: "22px",
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(4, minmax(0, 1fr))",
-    gap: "12px",
-  },
-  timelineCard: {
-    borderRadius: "20px",
-    padding: "14px 12px",
-    border: "1px solid #ded8be",
-    background: "#fffdf5",
-    minHeight: "86px",
     display: "flex",
     flexDirection: "column",
-    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "14px",
   },
-  timelineLabel: {
-    color: "#7a7253",
-    fontSize: "11px",
+  calendarButton: {
+    minWidth: "200px",
+    maxWidth: "100%",
+    border: "1px solid #2f5f32",
+    borderRadius: "999px",
+    background:
+      "linear-gradient(180deg, #416b3b 0%, #315a31 100%)",
+    color: "#ffffff",
+    padding: "13px 22px",
+    fontSize: "15px",
+    fontWeight: 800,
+    cursor: "pointer",
+    boxShadow:
+      "0 14px 24px rgba(49, 90, 49, 0.18)",
+  },
+  calendarRunningText: {
+    color: "#65705f",
+    fontSize: "13px",
+    fontWeight: 700,
+  },
+  calendarShell: {
+    marginTop: "10px",
+    width: "100%",
+    display: "flex",
+    justifyContent: "center",
+  },
+  calendarFrame: {
+    width: "100%",
+    maxWidth: "380px",
+    perspective: "1200px",
+  },
+  calendarCard: {
+    width: "100%",
+    borderRadius: "28px",
+    overflow: "hidden",
+    border: "1px solid #d8d3bf",
+    boxShadow:
+      "0 22px 36px rgba(74, 84, 57, 0.14)",
+    background: "#fffef8",
+  },
+  calendarTop: {
+    background:
+      "linear-gradient(180deg, #477340 0%, #315a31 100%)",
+    padding: "16px 16px 14px",
+    position: "relative",
+  },
+  calendarTopLabel: {
+    color: "rgba(255, 255, 255, 0.92)",
+    fontSize: "12px",
     fontWeight: 800,
     letterSpacing: "0.8px",
     textTransform: "uppercase",
+    textAlign: "center",
   },
-  timelineValue: {
-    color: "#1a1f17",
-    fontSize: "29px",
-    fontWeight: 800,
-    lineHeight: 1,
+  calendarBindingRow: {
+    position: "absolute",
+    left: "50%",
+    bottom: "-9px",
+    transform: "translateX(-50%)",
+    display: "flex",
+    gap: "16px",
   },
-  timelineNote: {
-    color: "#6a735f",
-    fontSize: "12px",
-    lineHeight: 1.35,
-  },
-  whatsappShell: {
-    marginTop: "24px",
-    borderRadius: "28px",
-    overflow: "hidden",
-    border: "1px solid #cde7d7",
+  calendarBindingDot: {
+    width: "18px",
+    height: "18px",
+    borderRadius: "50%",
+    background: "#ecf3e7",
+    border: "3px solid #d2decb",
     boxShadow:
-      "0 18px 34px rgba(24, 67, 50, 0.12)",
+      "inset 0 2px 4px rgba(62, 88, 55, 0.10)",
   },
-  whatsappHeader: {
-    background: "#075e54",
-    color: "#ffffff",
-    padding: "14px 18px",
+  calendarPageStage: {
+    padding: "28px 18px 22px",
+    background:
+      "linear-gradient(180deg, #fffef7 0%, #f7f3e7 100%)",
+  },
+  calendarPage: {
+    minHeight: "290px",
+    width: "100%",
+    borderRadius: "22px",
+    background:
+      "linear-gradient(180deg, #fffefc 0%, #fbf6ea 100%)",
+    border: "1px solid #e5dcc7",
+    boxShadow:
+      "inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 16px 28px rgba(89, 83, 57, 0.08)",
+    transformOrigin: "top center",
+    animation:
+      "calendarFlip 132ms cubic-bezier(0.2, 0.75, 0.2, 1) both",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    padding: "28px 18px",
+  },
+  calendarDayLabel: {
+    color: "#5d6a58",
+    fontSize: "18px",
+    fontWeight: 800,
+    letterSpacing: "3px",
+    textTransform: "uppercase",
+  },
+  calendarDayNumber: {
+    marginTop: "18px",
+    color: "#1f281c",
+    fontSize: "clamp(96px, 28vw, 148px)",
+    fontWeight: 800,
+    lineHeight: 0.9,
+  },
+  calendarDayFooter: {
+    marginTop: "20px",
+    color: "#74806f",
+    fontSize: "12px",
+    fontWeight: 700,
+    letterSpacing: "0.7px",
+    textTransform: "uppercase",
+  },
+  calendarComplete: {
+    marginTop: "18px",
+    padding: "14px 16px",
+    borderRadius: "18px",
+    border: "1px solid #b4cfb4",
+    background:
+      "linear-gradient(180deg, #edf7ed 0%, #e4f1e4 100%)",
+    color: "#315a31",
+    fontSize: "15px",
+    fontWeight: 800,
+    textAlign: "center",
+  },
+  calendarHint: {
+    marginTop: "12px",
+    color: "#66715f",
+    fontSize: "12px",
+    lineHeight: 1.45,
+    textAlign: "center",
+  },
+  calendarFooterDays: {
+    marginTop: "16px",
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: "14px",
+    justifyContent: "center",
+    gap: "8px",
+    flexWrap: "wrap",
   },
-  whatsappTitle: {
+  calendarFooterChip: {
+    padding: "6px 10px",
+    borderRadius: "999px",
+    background: "#eef2e8",
+    color: "#52604f",
+    fontSize: "11px",
+    fontWeight: 800,
+    letterSpacing: "0.5px",
+  },
+  chatSection: {
+    marginTop: "22px",
+    width: "100%",
+    maxWidth: "920px",
+    borderRadius: "24px",
+    overflow: "hidden",
+    border: "1px solid #cfe2d6",
+    boxShadow:
+      "0 16px 30px rgba(24, 67, 50, 0.10)",
+  },
+  chatHeader: {
+    background: "#075e54",
+    color: "#ffffff",
+    padding: "14px 16px",
+  },
+  chatHeaderTitle: {
     fontSize: "15px",
     fontWeight: 800,
   },
-  whatsappSubtitle: {
+  chatHeaderSubtitle: {
+    marginTop: "2px",
     fontSize: "11px",
-    color: "rgba(255, 255, 255, 0.78)",
+    color: "rgba(255, 255, 255, 0.8)",
   },
-  whatsappBody: {
-    padding: "22px 18px 26px",
-    background:
-      "linear-gradient(180deg, #dbeee5 0%, #e5f3ec 100%)",
+  chatBody: {
     position: "relative",
+    padding: "20px 16px 22px",
+    background:
+      "linear-gradient(180deg, #dcefe7 0%, #e7f3ed 100%)",
   },
-  whatsappPattern: {
+  chatPattern: {
     position: "absolute",
     inset: 0,
-    opacity: 0.22,
+    opacity: 0.2,
     backgroundImage:
-      "radial-gradient(circle at 20px 20px, #b3d7c4 2px, transparent 0), radial-gradient(circle at 60px 60px, #b3d7c4 2px, transparent 0)",
-    backgroundSize: "80px 80px",
+      "radial-gradient(circle at 18px 18px, #b8d8c7 2px, transparent 0), radial-gradient(circle at 58px 58px, #b8d8c7 2px, transparent 0)",
+    backgroundSize: "76px 76px",
     pointerEvents: "none",
   },
-  chatRow: {
+  chatBubbleRow: {
     position: "relative",
     display: "flex",
     justifyContent: "flex-start",
   },
+  chatBubbleRowRight: {
+    position: "relative",
+    display: "flex",
+    justifyContent: "flex-end",
+    marginTop: "12px",
+  },
   chatBubble: {
     position: "relative",
-    maxWidth: "min(560px, 100%)",
-    padding: "14px 16px 12px",
-    borderRadius: "18px 18px 18px 6px",
+    width: "min(100%, 640px)",
     background: "#dcf8c6",
     color: "#18261b",
+    borderRadius: "18px 18px 18px 6px",
+    padding: "14px 16px 12px",
     boxShadow:
       "0 8px 18px rgba(21, 52, 39, 0.12)",
+  },
+  chatBubbleReply: {
+    position: "relative",
+    width: "min(100%, 240px)",
+    background: "#ffffff",
+    color: "#1f2a22",
+    borderRadius: "18px 18px 6px 18px",
+    padding: "12px 14px 10px",
+    boxShadow:
+      "0 8px 18px rgba(21, 52, 39, 0.08)",
+  },
+  chatBubbleVet: {
+    position: "relative",
+    width: "min(100%, 640px)",
+    background: "#f4e5d7",
+    color: "#3b2a1d",
+    borderRadius: "18px 18px 18px 6px",
+    padding: "14px 16px 12px",
+    boxShadow:
+      "0 8px 18px rgba(83, 57, 31, 0.10)",
   },
   chatSender: {
     color: "#075e54",
@@ -674,30 +872,49 @@ export const appStyles = {
     fontWeight: 800,
     marginBottom: "6px",
   },
+  chatSenderVet: {
+    color: "#8b4f1d",
+    fontSize: "12px",
+    fontWeight: 800,
+    marginBottom: "6px",
+  },
+  chatSenderReply: {
+    color: "#547744",
+    fontSize: "12px",
+    fontWeight: 800,
+    marginBottom: "6px",
+    textAlign: "right",
+  },
   chatMessage: {
     margin: 0,
     fontSize: "15px",
+    lineHeight: 1.6,
+    minHeight: "48px",
+  },
+  chatReplyMessage: {
+    margin: 0,
+    fontSize: "15px",
     lineHeight: 1.5,
+  },
+  chatWord: {
+    display: "inline-block",
+    marginRight: "0.32em",
   },
   chatCowName: {
     color: "#b42318",
     fontWeight: 800,
   },
+  chatNeedle: {
+    display: "inline-block",
+    marginRight: "8px",
+    fontSize: "18px",
+    verticalAlign: "middle",
+  },
   chatMeta: {
     marginTop: "10px",
-    color: "#55715e",
+    color: "#57715f",
     fontSize: "11px",
     textAlign: "right",
-  },
-  reminderFallback: {
-    marginTop: "22px",
-    padding: "20px",
-    borderRadius: "22px",
-    background: "#fffdf5",
-    border: "1px dashed #d8cfaa",
-    color: "#6c725a",
-    fontSize: "14px",
-    lineHeight: 1.55,
   },
 } satisfies Record<
   string,
@@ -841,20 +1058,4 @@ export const getDateCellStyle =
     fontWeight: isRecentRecord
       ? 700
       : 500,
-  });
-
-export const getTimelineCardStyle =
-  (
-    isHighlight: boolean,
-  ): CSSProperties => ({
-    ...appStyles.timelineCard,
-    border: isHighlight
-      ? "1px solid #2d6a4f"
-      : "1px solid #ded8be",
-    background: isHighlight
-      ? "linear-gradient(180deg, #e9f6ef 0%, #d9efdf 100%)"
-      : "#fffdf5",
-    boxShadow: isHighlight
-      ? "0 14px 28px rgba(45, 106, 79, 0.12)"
-      : "none",
   });
