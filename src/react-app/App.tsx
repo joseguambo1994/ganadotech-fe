@@ -1,7 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
 import logo from "./assets/ganadotech-logo.png";
 
-type StatusType = "neutral" | "recording" | "success" | "error";
+type StatusType =
+  | "neutral"
+  | "recording"
+  | "success"
+  | "error";
 
 type ApiResponse = {
   success?: boolean;
@@ -14,26 +24,101 @@ type ApiResponse = {
   last_heat_date?: string;
   created_at?: string;
 
-  // These two can come from your Hono proxy
   status?: number;
   details?: string;
 };
 
-function App() {
-  const [isRecording, setIsRecording] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+type CattleRecord = {
+  id: number;
+  name: string;
+  last_heat_date: string;
+  created_at: string;
+};
 
-  const [status, setStatus] = useState("");
+type CattleResponse = {
+  success?: boolean;
+  cattle?: CattleRecord[];
+  error?: string;
+};
+
+type RecentRecordMatch = {
+  id?: number;
+  name?: string;
+  last_heat_date?: string;
+};
+
+const monthNames = [
+  "jan",
+  "feb",
+  "mar",
+  "apr",
+  "may",
+  "jun",
+  "jul",
+  "aug",
+  "sep",
+  "oct",
+  "nov",
+  "dec",
+];
+
+function App() {
+  const [isRecording, setIsRecording] =
+    useState(false);
+
+  const [isLoading, setIsLoading] =
+    useState(false);
+
+  const [status, setStatus] =
+    useState("");
+
   const [statusType, setStatusType] =
     useState<StatusType>("neutral");
 
-  const [errorMessage, setErrorMessage] = useState("");
+  const [errorMessage, setErrorMessage] =
+    useState("");
 
-  const [showInstruction, setShowInstruction] =
-    useState(false);
+  const [
+    showInstruction,
+    setShowInstruction,
+  ] = useState(false);
 
-  const [showMicrophone, setShowMicrophone] =
-    useState(false);
+  const [
+    showMicrophone,
+    setShowMicrophone,
+  ] = useState(false);
+
+  /*
+   * =====================================================
+   * CATTLE TABLE STATE
+   * =====================================================
+   */
+
+  const [cattle, setCattle] =
+    useState<CattleRecord[]>([]);
+
+  const [
+    isLoadingCattle,
+    setIsLoadingCattle,
+  ] = useState(false);
+
+  const [
+    cattleError,
+    setCattleError,
+  ] = useState("");
+
+  const [
+    recentRecordId,
+    setRecentRecordId,
+  ] = useState<number | null>(
+    null,
+  );
+
+  /*
+   * =====================================================
+   * MEDIA RECORDER REFERENCES
+   * =====================================================
+   */
 
   const mediaRecorderRef =
     useRef<MediaRecorder | null>(null);
@@ -44,140 +129,330 @@ function App() {
   const timeoutRef =
     useRef<number | null>(null);
 
-  useEffect(() => {
-    const instructionTimer = window.setTimeout(() => {
-      setShowInstruction(true);
-    }, 450);
+  /*
+   * =====================================================
+   * LOAD CATTLE FROM API
+   * =====================================================
+   */
 
-    const microphoneTimer = window.setTimeout(() => {
-      setShowMicrophone(true);
-    }, 1600);
+  const loadCattle =
+    useCallback(async () => {
+      setIsLoadingCattle(true);
+      setCattleError("");
+
+      try {
+        const response =
+          await fetch("/api/cattle");
+
+        const responseText =
+          await response.text();
+
+        let result: CattleResponse = {};
+
+        try {
+          result =
+            JSON.parse(responseText);
+        } catch {
+          throw new Error(
+            "The cattle service returned an invalid response.",
+          );
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            result.error ||
+              "Could not load cattle records.",
+          );
+        }
+
+        const records =
+          Array.isArray(result.cattle)
+            ? result.cattle
+            : [];
+
+        setCattle(records);
+
+        return records;
+      } catch (error) {
+        console.error(
+          "Cattle loading error:",
+          error,
+        );
+
+        setCattleError(
+          error instanceof Error
+            ? error.message
+            : "Could not load cattle records.",
+        );
+
+        return [];
+      } finally {
+        setIsLoadingCattle(false);
+      }
+    }, []);
+
+  /*
+   * =====================================================
+   * INITIAL EFFECTS
+   * =====================================================
+   */
+
+  useEffect(() => {
+    const instructionTimer =
+      window.setTimeout(() => {
+        setShowInstruction(true);
+      }, 450);
+
+    const microphoneTimer =
+      window.setTimeout(() => {
+        setShowMicrophone(true);
+      }, 1600);
 
     return () => {
-      clearTimeout(instructionTimer);
-      clearTimeout(microphoneTimer);
+      clearTimeout(
+        instructionTimer,
+      );
 
-      if (timeoutRef.current !== null) {
-        clearTimeout(timeoutRef.current);
+      clearTimeout(
+        microphoneTimer,
+      );
+
+      if (
+        timeoutRef.current !== null
+      ) {
+        clearTimeout(
+          timeoutRef.current,
+        );
       }
 
       streamRef.current
         ?.getTracks()
-        .forEach((track) => track.stop());
+        .forEach((track) =>
+          track.stop(),
+        );
     };
   }, []);
 
-  const startRecording = async () => {
-    try {
-      setErrorMessage("");
-      setStatus("Preparing microphone...");
-      setStatusType("neutral");
+  /*
+   * Load cattle when application opens.
+   */
 
-      const stream =
-        await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
+  useEffect(() => {
+    loadCattle();
+  }, [loadCattle]);
 
-      streamRef.current = stream;
+  /*
+   * =====================================================
+   * START RECORDING
+   * =====================================================
+   */
 
-      const chunks: Blob[] = [];
+  const startRecording =
+    async () => {
+      try {
+        setErrorMessage("");
 
-      const mediaRecorder =
-        new MediaRecorder(stream);
+        setStatus(
+          "Preparing microphone...",
+        );
 
-      mediaRecorderRef.current =
-        mediaRecorder;
+        setStatusType(
+          "neutral",
+        );
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
-        }
-      };
+        const stream =
+          await navigator.mediaDevices.getUserMedia(
+            {
+              audio: true,
+            },
+          );
 
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(chunks, {
-          type: mediaRecorder.mimeType,
-        });
+        streamRef.current =
+          stream;
 
-        stream
-          .getTracks()
-          .forEach((track) => track.stop());
+        const chunks: Blob[] =
+          [];
 
-        streamRef.current = null;
-        mediaRecorderRef.current = null;
+        const mediaRecorder =
+          new MediaRecorder(
+            stream,
+          );
 
-        setIsRecording(false);
+        mediaRecorderRef.current =
+          mediaRecorder;
 
-        console.log("Recorded audio:", {
-          type: audioBlob.type,
-          size: audioBlob.size,
-        });
+        mediaRecorder.ondataavailable =
+          (event) => {
+            if (
+              event.data.size > 0
+            ) {
+              chunks.push(
+                event.data,
+              );
+            }
+          };
 
-        await uploadAudio(audioBlob);
-      };
+        mediaRecorder.onstop =
+          async () => {
+            const audioBlob =
+              new Blob(
+                chunks,
+                {
+                  type:
+                    mediaRecorder.mimeType,
+                },
+              );
 
-      mediaRecorder.start();
+            stream
+              .getTracks()
+              .forEach(
+                (track) =>
+                  track.stop(),
+              );
 
-      setIsRecording(true);
+            streamRef.current =
+              null;
 
-      setStatus("Listening...");
-      setStatusType("recording");
+            mediaRecorderRef.current =
+              null;
 
-      // Maximum recording time: 20 seconds
-      timeoutRef.current =
-        window.setTimeout(() => {
-          stopRecording();
-        }, 20_000);
-    } catch (error) {
-      console.error(
-        "Microphone error:",
-        error,
-      );
+            setIsRecording(
+              false,
+            );
 
-      setIsRecording(false);
+            console.log(
+              "Recorded audio:",
+              {
+                type:
+                  audioBlob.type,
 
-      setStatus("Microphone unavailable.");
-      setStatusType("error");
+                size:
+                  audioBlob.size,
+              },
+            );
 
-      setErrorMessage(
-        "We could not access your microphone. Please check your browser permissions and try again.",
-      );
-    }
-  };
+            await uploadAudio(
+              audioBlob,
+            );
+          };
 
-  const stopRecording = () => {
-    if (
-      mediaRecorderRef.current &&
-      mediaRecorderRef.current.state !==
-        "inactive"
-    ) {
-      setStatus("Processing...");
-      setStatusType("neutral");
+        mediaRecorder.start();
 
-      mediaRecorderRef.current.stop();
-    }
+        setIsRecording(
+          true,
+        );
 
-    if (timeoutRef.current !== null) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-  };
+        setStatus(
+          "Listening...",
+        );
+
+        setStatusType(
+          "recording",
+        );
+
+        /*
+         * Maximum recording:
+         * 20 seconds.
+         */
+
+        timeoutRef.current =
+          window.setTimeout(
+            () => {
+              stopRecording();
+            },
+            20_000,
+          );
+      } catch (error) {
+        console.error(
+          "Microphone error:",
+          error,
+        );
+
+        setIsRecording(
+          false,
+        );
+
+        setStatus(
+          "Microphone unavailable.",
+        );
+
+        setStatusType(
+          "error",
+        );
+
+        setErrorMessage(
+          "We could not access your microphone. Please check your browser permissions and try again.",
+        );
+      }
+    };
+
+  /*
+   * =====================================================
+   * STOP RECORDING
+   * =====================================================
+   */
+
+  const stopRecording =
+    () => {
+      if (
+        mediaRecorderRef.current &&
+        mediaRecorderRef.current
+          .state !== "inactive"
+      ) {
+        setStatus(
+          "Processing...",
+        );
+
+        setStatusType(
+          "neutral",
+        );
+
+        mediaRecorderRef.current.stop();
+      }
+
+      if (
+        timeoutRef.current !==
+        null
+      ) {
+        clearTimeout(
+          timeoutRef.current,
+        );
+
+        timeoutRef.current =
+          null;
+      }
+    };
+
+  /*
+   * =====================================================
+   * JSON PARSER
+   * =====================================================
+   */
 
   const parseJson = (
     value: string,
   ): ApiResponse | null => {
     try {
-      return JSON.parse(value);
+      return JSON.parse(
+        value,
+      );
     } catch {
       return null;
     }
   };
 
+  /*
+   * =====================================================
+   * EXPLICIT 400 ERRORS
+   * =====================================================
+   */
+
   const map400Error = (
     response: ApiResponse,
   ) => {
     if (
-      response.missing_field === "name"
+      response.missing_field ===
+      "name"
     ) {
       return (
         "Cow name missing. " +
@@ -211,178 +486,425 @@ function App() {
     );
   };
 
-  const uploadAudio = async (
-    audioBlob: Blob,
-  ) => {
-    setIsLoading(true);
+  /*
+   * =====================================================
+   * UPLOAD AUDIO
+   * =====================================================
+   */
 
-    try {
-      setErrorMessage("");
+  const uploadAudio =
+    async (
+      audioBlob: Blob,
+    ) => {
+      setIsLoading(true);
 
-      setStatus("Processing audio...");
-      setStatusType("neutral");
+      try {
+        setErrorMessage(
+          "",
+        );
 
-      const response = await fetch(
-        "/api/audio",
-        {
-          method: "POST",
+        setStatus(
+          "Processing audio...",
+        );
 
-          headers: {
-            "Content-Type":
-              audioBlob.type ||
-              "application/octet-stream",
-          },
+        setStatusType(
+          "neutral",
+        );
 
-          body: audioBlob,
-        },
-      );
+        const response =
+          await fetch(
+            "/api/audio",
+            {
+              method:
+                "POST",
 
-      const responseText =
-        await response.text();
+              headers: {
+                "Content-Type":
+                  audioBlob.type ||
+                  "application/octet-stream",
+              },
 
-      const result =
-        parseJson(responseText) || {};
+              body:
+                audioBlob,
+            },
+          );
 
-      /*
-       * ------------------------------------------------
-       * HANDLE DIRECT 400
-       * ------------------------------------------------
-       */
+        const responseText =
+          await response.text();
 
-      if (response.status === 400) {
-        const message =
-          map400Error(result);
+        const result =
+          parseJson(
+            responseText,
+          ) || {};
 
-        setStatus("Please try again.");
-        setStatusType("error");
-        setErrorMessage(message);
-
-        return;
-      }
-
-      /*
-       * ------------------------------------------------
-       * HANDLE 400 WRAPPED BY YOUR HONO PROXY
-       * ------------------------------------------------
-       */
-
-      if (
-        result.status === 400
-      ) {
-        let originalError: ApiResponse =
-          result;
+        /*
+         * =================================================
+         * DIRECT 400
+         * =================================================
+         */
 
         if (
-          typeof result.details ===
-          "string"
+          response.status ===
+          400
         ) {
-          const parsedDetails =
-            parseJson(result.details);
+          const message =
+            map400Error(
+              result,
+            );
 
-          if (parsedDetails) {
-            originalError =
-              parsedDetails;
-          }
+          setStatus(
+            "Please try again.",
+          );
+
+          setStatusType(
+            "error",
+          );
+
+          setErrorMessage(
+            message,
+          );
+
+          return;
         }
 
-        const message =
-          map400Error(originalError);
+        /*
+         * =================================================
+         * 400 WRAPPED BY HONO
+         * =================================================
+         */
 
-        setStatus("Please try again.");
-        setStatusType("error");
-        setErrorMessage(message);
+        if (
+          result.status ===
+          400
+        ) {
+          let originalError:
+            ApiResponse =
+            result;
 
-        return;
-      }
+          if (
+            typeof result.details ===
+            "string"
+          ) {
+            const parsedDetails =
+              parseJson(
+                result.details,
+              );
 
-      /* OTHER HTTP ERRORS */
+            if (
+              parsedDetails
+            ) {
+              originalError =
+                parsedDetails;
+            }
+          }
 
-      if (!response.ok) {
-        console.error(
-          "API error:",
-          response.status,
+          const message =
+            map400Error(
+              originalError,
+            );
+
+          setStatus(
+            "Please try again.",
+          );
+
+          setStatusType(
+            "error",
+          );
+
+          setErrorMessage(
+            message,
+          );
+
+          return;
+        }
+
+        /*
+         * =================================================
+         * OTHER HTTP ERRORS
+         * =================================================
+         */
+
+        if (
+          !response.ok
+        ) {
+          console.error(
+            "API error:",
+            response.status,
+            result,
+          );
+
+          setStatus(
+            "Unable to process recording.",
+          );
+
+          setStatusType(
+            "error",
+          );
+
+          setErrorMessage(
+            result.error ||
+              "Something went wrong while processing the recording. Please try again.",
+          );
+
+          return;
+        }
+
+        /*
+         * =================================================
+         * SUCCESS
+         * =================================================
+         */
+
+        console.log(
+          "Speech response:",
           result,
+        );
+
+        setStatus(
+          "Record saved successfully.",
+        );
+
+        setStatusType(
+          "success",
+        );
+
+        setErrorMessage(
+          "",
+        );
+
+        /*
+         * Refresh cattle table
+         * immediately after INSERT.
+         */
+
+        const refreshedCattle =
+          await loadCattle();
+
+        setRecentRecordId(
+          findRecentRecordId(
+            refreshedCattle,
+            {
+              id: result.id,
+              name: result.name,
+              last_heat_date:
+                result.last_heat_date,
+            },
+          ),
+        );
+      } catch (error) {
+        console.error(
+          "Audio upload error:",
+          error,
         );
 
         setStatus(
           "Unable to process recording.",
         );
 
-        setStatusType("error");
-
-        setErrorMessage(
-          result.error ||
-            "Something went wrong while processing the recording. Please try again.",
+        setStatusType(
+          "error",
         );
 
-        return;
+        setErrorMessage(
+          "We could not connect to the service. Please try again.",
+        );
+      } finally {
+        setIsLoading(
+          false,
+        );
+      }
+    };
+
+  /*
+   * =====================================================
+   * STATUS COLORS
+   * =====================================================
+   */
+
+  const statusBackground =
+    () => {
+      if (
+        statusType ===
+        "error"
+      ) {
+        return "#f7ebe8";
       }
 
-      /* SUCCESS */
+      if (
+        statusType ===
+        "success"
+      ) {
+        return "#edf4e8";
+      }
 
-      console.log(
-        "Speech response:",
-        result,
+      if (
+        statusType ===
+        "recording"
+      ) {
+        return "#edf4e8";
+      }
+
+      return "#f4f5f0";
+    };
+
+  const statusColor =
+    () => {
+      if (
+        statusType ===
+        "error"
+      ) {
+        return "#9b4034";
+      }
+
+      if (
+        statusType ===
+          "success" ||
+        statusType ===
+          "recording"
+      ) {
+        return "#315a31";
+      }
+
+      return "#697164";
+    };
+
+  const findRecentRecordId =
+    (
+      records: CattleRecord[],
+      match: RecentRecordMatch,
+    ) => {
+      if (
+        typeof match.id ===
+        "number"
+      ) {
+        return match.id;
+      }
+
+      const matchingRecords =
+        records.filter(
+          (record) =>
+            (!match.name ||
+              record.name ===
+                match.name) &&
+            (!match.last_heat_date ||
+              record.last_heat_date ===
+                match.last_heat_date),
+        );
+
+      if (
+        matchingRecords.length ===
+        0
+      ) {
+        return records.reduce(
+          (
+            latestId,
+            record,
+          ) =>
+            record.id > latestId
+              ? record.id
+              : latestId,
+          0,
+        );
+      }
+
+      return matchingRecords.reduce(
+        (
+          latestId,
+          record,
+        ) =>
+          record.id > latestId
+            ? record.id
+            : latestId,
+        0,
       );
+    };
 
-      setStatus(
-        "Record saved successfully.",
-      );
+  const formatHeatDate =
+    (value: string) => {
+      const isoDateMatch =
+        value.match(
+          /^(\d{4})-(\d{2})-(\d{2})$/,
+        );
 
-      setStatusType("success");
-      setErrorMessage("");
-    } catch (error) {
-      console.error(
-        "Audio upload error:",
-        error,
-      );
+      if (isoDateMatch) {
+        const [
+          ,
+          year,
+          month,
+          day,
+        ] = isoDateMatch;
 
-      setStatus(
-        "Unable to process recording.",
-      );
+        return `${day} ${monthNames[Number(month) - 1]} ${year}`;
+      }
 
-      setStatusType("error");
+      const parsedDate =
+        new Date(value);
 
-      setErrorMessage(
-        "We could not connect to the service. Please try again.",
-      );
-    } finally {
-      // Loading stays visible for the entire backend request
-      // and disappears only after the response/error is handled.
-      setIsLoading(false);
-    }
-  };
+      if (
+        Number.isNaN(
+          parsedDate.getTime(),
+        )
+      ) {
+        return value;
+      }
 
-  const statusBackground = () => {
-    if (statusType === "error") {
-      return "#f7ebe8";
-    }
+      const day =
+        String(
+          parsedDate.getDate(),
+        ).padStart(2, "0");
 
-    if (statusType === "success") {
-      return "#edf4e8";
-    }
+      const month =
+        monthNames[
+          parsedDate.getMonth()
+        ];
 
-    if (statusType === "recording") {
-      return "#edf4e8";
-    }
+      const year =
+        parsedDate.getFullYear();
 
-    return "#f4f5f0";
-  };
+      return `${day} ${month} ${year}`;
+    };
 
-  const statusColor = () => {
-    if (statusType === "error") {
-      return "#9b4034";
-    }
+  const visibleCattle =
+    [...cattle]
+      .sort(
+        (left, right) => {
+          const leftTime =
+            Date.parse(
+              left.created_at,
+            );
 
-    if (
-      statusType === "success" ||
-      statusType === "recording"
-    ) {
-      return "#315a31";
-    }
+          const rightTime =
+            Date.parse(
+              right.created_at,
+            );
 
-    return "#697164";
-  };
+          if (
+            !Number.isNaN(
+              leftTime,
+            ) &&
+            !Number.isNaN(
+              rightTime,
+            ) &&
+            leftTime !== rightTime
+          ) {
+            return (
+              rightTime -
+              leftTime
+            );
+          }
+
+          return (
+            right.id - left.id
+          );
+        },
+      )
+      .slice(0, 5);
+
+  /*
+   * =====================================================
+   * RENDER
+   * =====================================================
+   */
 
   return (
     <>
@@ -457,83 +979,184 @@ function App() {
           button {
             font-family: inherit;
           }
+
+          table {
+            font-family: inherit;
+          }
+
+          tbody tr {
+            transition: background 0.15s ease;
+          }
+
+          tbody tr:hover {
+            background: #f5f7f1;
+          }
         `}
       </style>
 
       <main
         style={{
-          minHeight: "100vh",
-          background: "#eef2e8",
-          padding: "18px",
+          minHeight:
+            "100vh",
+
+          background:
+            "#eef2e8",
+
+          padding:
+            "18px",
+
           fontFamily:
             "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
+
+          display:
+            "flex",
+
+          flexDirection:
+            "column",
+
+          justifyContent:
+            "flex-start",
+
+          alignItems:
+            "center",
+
+          gap:
+            "22px",
         }}
       >
+        {/*
+         * ==================================================
+         * VOICE REGISTRATION CARD
+         * ==================================================
+         */}
+
         <section
           style={{
-            width: "100%",
-            maxWidth: "500px",
-            background: "#fbfcf8",
-            border: "1px solid #d8decf",
-            borderRadius: "36px",
-            padding: "24px 24px 30px",
+            width:
+              "100%",
+
+            maxWidth:
+              "500px",
+
+            background:
+              "#fbfcf8",
+
+            border:
+              "1px solid #d8decf",
+
+            borderRadius:
+              "36px",
+
+            padding:
+              "24px 24px 30px",
+
             boxShadow:
               "0 18px 50px rgba(54, 68, 48, 0.07)",
-            overflow: "hidden",
+
+            overflow:
+              "hidden",
           }}
         >
-          {/* HEADER — loader never covers this area */}
+          {/*
+           * HEADER
+           * Loader never covers this.
+           */}
+
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "18px",
-              marginBottom: "24px",
-              position: "relative",
-              zIndex: 30,
+              display:
+                "flex",
+
+              alignItems:
+                "center",
+
+              gap:
+                "18px",
+
+              marginBottom:
+                "24px",
+
+              position:
+                "relative",
+
+              zIndex:
+                30,
             }}
           >
             <div
               style={{
-                width: "108px",
-                height: "108px",
-                borderRadius: "26px",
-                background: "#eef0eb",
-                border: "1px solid #e1e5db",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                flexShrink: 0,
+                width:
+                  "108px",
+
+                height:
+                  "108px",
+
+                borderRadius:
+                  "26px",
+
+                background:
+                  "#eef0eb",
+
+                border:
+                  "1px solid #e1e5db",
+
+                display:
+                  "flex",
+
+                justifyContent:
+                  "center",
+
+                alignItems:
+                  "center",
+
+                flexShrink:
+                  0,
               }}
             >
               <img
                 src={logo}
                 alt="GanadoTech"
                 style={{
-                  width: "92px",
-                  height: "92px",
-                  objectFit: "contain",
+                  width:
+                    "92px",
+
+                  height:
+                    "92px",
+
+                  objectFit:
+                    "contain",
                 }}
               />
             </div>
 
             <div
               style={{
-                textAlign: "left",
-                minWidth: 0,
+                textAlign:
+                  "left",
+
+                minWidth:
+                  0,
               }}
             >
               <div
                 style={{
-                  color: "#315a31",
-                  fontSize: "12px",
-                  fontWeight: 800,
-                  letterSpacing: "1.8px",
-                  textTransform: "uppercase",
-                  marginBottom: "5px",
+                  color:
+                    "#315a31",
+
+                  fontSize:
+                    "12px",
+
+                  fontWeight:
+                    800,
+
+                  letterSpacing:
+                    "1.8px",
+
+                  textTransform:
+                    "uppercase",
+
+                  marginBottom:
+                    "5px",
                 }}
               >
                 GANADOTECH SPA
@@ -541,13 +1164,23 @@ function App() {
 
               <h1
                 style={{
-                  margin: 0,
-                  color: "#10140e",
+                  margin:
+                    0,
+
+                  color:
+                    "#10140e",
+
                   fontFamily:
                     "Georgia, 'Times New Roman', serif",
-                  fontSize: "31px",
-                  lineHeight: 1.05,
-                  fontWeight: 700,
+
+                  fontSize:
+                    "31px",
+
+                  lineHeight:
+                    1.05,
+
+                  fontWeight:
+                    700,
                 }}
               >
                 Livestock Farmer
@@ -557,156 +1190,310 @@ function App() {
             </div>
           </div>
 
-          {/* BODY — loading overlay covers everything in here */}
+          {/*
+           * BODY
+           */}
+
           <div
             style={{
-              position: "relative",
-              minHeight: "410px",
+              position:
+                "relative",
+
+              minHeight:
+                "410px",
             }}
           >
-            {/* LOADING WHILE BACKEND RETURNS */}
+            {/*
+             * LOADING OVERLAY
+             */}
+
             {isLoading && (
               <div
                 role="status"
                 aria-live="polite"
                 aria-label="Processing recording"
                 style={{
-                  position: "absolute",
-                  inset: 0,
-                  zIndex: 25,
-                  borderRadius: "26px",
-                  background: "rgba(251, 252, 248, 0.94)",
-                  backdropFilter: "blur(4px)",
-                  WebkitBackdropFilter: "blur(4px)",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  animation: "loadingFade 0.2s ease-out",
+                  position:
+                    "absolute",
+
+                  inset:
+                    0,
+
+                  zIndex:
+                    25,
+
+                  borderRadius:
+                    "26px",
+
+                  background:
+                    "rgba(251, 252, 248, 0.94)",
+
+                  backdropFilter:
+                    "blur(4px)",
+
+                  WebkitBackdropFilter:
+                    "blur(4px)",
+
+                  display:
+                    "flex",
+
+                  flexDirection:
+                    "column",
+
+                  alignItems:
+                    "center",
+
+                  justifyContent:
+                    "center",
+
+                  animation:
+                    "loadingFade 0.2s ease-out",
                 }}
               >
                 <div
                   style={{
-                    width: "62px",
-                    height: "62px",
-                    borderRadius: "50%",
-                    border: "6px solid #dfe6d8",
-                    borderTopColor: "#315a31",
-                    animation: "loadingSpin 0.8s linear infinite",
+                    width:
+                      "62px",
+
+                    height:
+                      "62px",
+
+                    borderRadius:
+                      "50%",
+
+                    border:
+                      "6px solid #dfe6d8",
+
+                    borderTopColor:
+                      "#315a31",
+
+                    animation:
+                      "loadingSpin 0.8s linear infinite",
                   }}
                 />
 
                 <p
                   style={{
-                    margin: "18px 0 0",
-                    color: "#263222",
-                    fontSize: "16px",
-                    fontWeight: 800,
+                    margin:
+                      "18px 0 0",
+
+                    color:
+                      "#263222",
+
+                    fontSize:
+                      "16px",
+
+                    fontWeight:
+                      800,
                   }}
                 >
-                  Processing audio...
+                  Processing
+                  audio...
                 </p>
 
                 <p
                   style={{
-                    margin: "6px 0 0",
-                    color: "#747d6e",
-                    fontSize: "12px",
-                    lineHeight: 1.45,
+                    margin:
+                      "6px 0 0",
+
+                    color:
+                      "#747d6e",
+
+                    fontSize:
+                      "12px",
+
+                    lineHeight:
+                      1.45,
                   }}
                 >
-                  Reading the cattle name and last heat date.
+                  Reading the
+                  cattle name and
+                  last heat date.
                 </p>
               </div>
             )}
 
-            {/* INSTRUCTION — smaller text, no different background */}
+            {/*
+             * INSTRUCTION
+             */}
+
             <div
               style={{
-                padding: "4px 8px 8px",
-                textAlign: "center",
-                opacity: showInstruction ? 1 : 0,
-                transform: showInstruction
-                  ? "translateY(0)"
-                  : "translateY(12px)",
+                padding:
+                  "4px 8px 8px",
+
+                textAlign:
+                  "center",
+
+                opacity:
+                  showInstruction
+                    ? 1
+                    : 0,
+
+                transform:
+                  showInstruction
+                    ? "translateY(0)"
+                    : "translateY(12px)",
+
                 transition:
                   "opacity 0.8s ease, transform 0.8s ease",
               }}
             >
               <p
                 style={{
-                  margin: 0,
-                  color: "#172016",
-                  fontSize: "14px",
-                  lineHeight: 1.4,
-                  fontWeight: 700,
+                  margin:
+                    0,
+
+                  color:
+                    "#172016",
+
+                  fontSize:
+                    "14px",
+
+                  lineHeight:
+                    1.4,
+
+                  fontWeight:
+                    700,
                 }}
               >
-                Say the cattle name and the last heat date.
+                Say the cattle
+                name and the last
+                heat date.
               </p>
 
               <p
                 style={{
-                  margin: "5px 0 0",
-                  color: "#65705f",
-                  fontSize: "12px",
-                  lineHeight: 1.45,
+                  margin:
+                    "5px 0 0",
+
+                  color:
+                    "#65705f",
+
+                  fontSize:
+                    "12px",
+
+                  lineHeight:
+                    1.45,
                 }}
               >
-                Example: “Cow Martha had her last heat on August 7, 2026.”
+                Example: “Cow
+                Martha had her last
+                heat on August 7,
+                2026.”
               </p>
             </div>
 
-            {/* MICROPHONE AREA */}
+            {/*
+             * MICROPHONE AREA
+             */}
+
             <div
               style={{
-                marginTop: "18px",
-                border: "1px solid #dce2d4",
-                borderRadius: "25px",
-                background: "#fbfcf8",
-                padding: "28px 20px 20px",
-                opacity: showMicrophone ? 1 : 0,
-                transform: showMicrophone
-                  ? "translateY(0)"
-                  : "translateY(18px)",
+                marginTop:
+                  "18px",
+
+                border:
+                  "1px solid #dce2d4",
+
+                borderRadius:
+                  "25px",
+
+                background:
+                  "#fbfcf8",
+
+                padding:
+                  "28px 20px 20px",
+
+                opacity:
+                  showMicrophone
+                    ? 1
+                    : 0,
+
+                transform:
+                  showMicrophone
+                    ? "translateY(0)"
+                    : "translateY(18px)",
+
                 transition:
                   "opacity 0.7s ease, transform 0.7s ease",
+
                 pointerEvents:
-                  showMicrophone && !isLoading
+                  showMicrophone &&
+                  !isLoading
                     ? "auto"
                     : "none",
               }}
             >
               {!isRecording ? (
                 <>
-                  {/* Mic is truly centered; hand floats independently */}
                   <div
                     style={{
-                      position: "relative",
-                      width: "100%",
-                      minHeight: "178px",
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
+                      position:
+                        "relative",
+
+                      width:
+                        "100%",
+
+                      minHeight:
+                        "178px",
+
+                      display:
+                        "flex",
+
+                      justifyContent:
+                        "center",
+
+                      alignItems:
+                        "center",
                     }}
                   >
                     <button
-                      onClick={startRecording}
-                      disabled={!showMicrophone || isLoading}
+                      onClick={
+                        startRecording
+                      }
+                      disabled={
+                        !showMicrophone ||
+                        isLoading
+                      }
                       aria-label="Press to record"
                       style={{
-                        width: "156px",
-                        height: "156px",
-                        borderRadius: "50%",
-                        border: "1px solid #cdd7c6",
-                        background: "#e8eee1",
-                        color: "#315a31",
-                        cursor: "pointer",
-                        fontSize: "64px",
-                        lineHeight: 1,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        width:
+                          "156px",
+
+                        height:
+                          "156px",
+
+                        borderRadius:
+                          "50%",
+
+                        border:
+                          "1px solid #cdd7c6",
+
+                        background:
+                          "#e8eee1",
+
+                        color:
+                          "#315a31",
+
+                        cursor:
+                          "pointer",
+
+                        fontSize:
+                          "64px",
+
+                        lineHeight:
+                          1,
+
+                        display:
+                          "flex",
+
+                        alignItems:
+                          "center",
+
+                        justifyContent:
+                          "center",
+
                         animation:
                           "micPulse 1.8s ease-out infinite",
                       }}
@@ -717,15 +1504,29 @@ function App() {
                     <div
                       aria-hidden="true"
                       style={{
-                        position: "absolute",
-                        left: "calc(50% + 76px)",
-                        top: "70px",
-                        fontSize: "52px",
-                        lineHeight: 1,
+                        position:
+                          "absolute",
+
+                        left:
+                          "calc(50% + 76px)",
+
+                        top:
+                          "70px",
+
+                        fontSize:
+                          "52px",
+
+                        lineHeight:
+                          1,
+
                         animation:
                           "handFloat 1.5s ease-in-out infinite",
-                        userSelect: "none",
-                        pointerEvents: "none",
+
+                        userSelect:
+                          "none",
+
+                        pointerEvents:
+                          "none",
                       }}
                     >
                       👈
@@ -734,42 +1535,85 @@ function App() {
 
                   <p
                     style={{
-                      margin: "14px 0 0",
-                      color: "#263222",
-                      fontSize: "15px",
-                      fontWeight: 700,
-                      textAlign: "center",
+                      margin:
+                        "14px 0 0",
+
+                      color:
+                        "#263222",
+
+                      fontSize:
+                        "15px",
+
+                      fontWeight:
+                        700,
+
+                      textAlign:
+                        "center",
                     }}
                   >
-                    Press here to speak
+                    Press here to
+                    speak
                   </p>
                 </>
               ) : (
                 <>
                   <div
                     style={{
-                      width: "100%",
-                      minHeight: "178px",
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
+                      width:
+                        "100%",
+
+                      minHeight:
+                        "178px",
+
+                      display:
+                        "flex",
+
+                      justifyContent:
+                        "center",
+
+                      alignItems:
+                        "center",
                     }}
                   >
                     <button
-                      onClick={stopRecording}
+                      onClick={
+                        stopRecording
+                      }
                       aria-label="Stop recording"
                       style={{
-                        width: "156px",
-                        height: "156px",
-                        borderRadius: "50%",
-                        border: "1px solid #e1c9c3",
-                        background: "#f3e8e4",
-                        color: "#a34534",
-                        cursor: "pointer",
-                        fontSize: "54px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        width:
+                          "156px",
+
+                        height:
+                          "156px",
+
+                        borderRadius:
+                          "50%",
+
+                        border:
+                          "1px solid #e1c9c3",
+
+                        background:
+                          "#f3e8e4",
+
+                        color:
+                          "#a34534",
+
+                        cursor:
+                          "pointer",
+
+                        fontSize:
+                          "54px",
+
+                        display:
+                          "flex",
+
+                        alignItems:
+                          "center",
+
+                        justifyContent:
+                          "center",
+
                         animation:
                           "recordingPulse 1.2s ease-in-out infinite",
                       }}
@@ -780,11 +1624,20 @@ function App() {
 
                   <p
                     style={{
-                      margin: "14px 0 0",
-                      color: "#8d3d30",
-                      fontSize: "15px",
-                      fontWeight: 700,
-                      textAlign: "center",
+                      margin:
+                        "14px 0 0",
+
+                      color:
+                        "#8d3d30",
+
+                      fontSize:
+                        "15px",
+
+                      fontWeight:
+                        700,
+
+                      textAlign:
+                        "center",
                     }}
                   >
                     Press to finish
@@ -792,30 +1645,59 @@ function App() {
                 </>
               )}
 
-              {/* STATUS */}
+              {/*
+               * STATUS
+               */}
+
               <div
                 style={{
-                  marginTop: "18px",
-                  minHeight: "47px",
-                  background: statusBackground(),
+                  marginTop:
+                    "18px",
+
+                  minHeight:
+                    "47px",
+
+                  background:
+                    statusBackground(),
+
                   border:
-                    statusType === "error"
+                    statusType ===
+                    "error"
                       ? "1px solid #e4cbc5"
                       : "1px solid #e0e4d9",
-                  borderRadius: "15px",
-                  padding: "12px 14px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+
+                  borderRadius:
+                    "15px",
+
+                  padding:
+                    "12px 14px",
+
+                  display:
+                    "flex",
+
+                  alignItems:
+                    "center",
+
+                  justifyContent:
+                    "center",
                 }}
               >
                 <span
                   style={{
-                    color: statusColor(),
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    lineHeight: 1.4,
-                    textAlign: "center",
+                    color:
+                      statusColor(),
+
+                    fontSize:
+                      "14px",
+
+                    fontWeight:
+                      600,
+
+                    lineHeight:
+                      1.4,
+
+                    textAlign:
+                      "center",
                   }}
                 >
                   {status ||
@@ -823,20 +1705,42 @@ function App() {
                 </span>
               </div>
 
-              {/* 400 / API ERROR MESSAGE */}
+              {/*
+               * API ERROR
+               */}
+
               {errorMessage && (
                 <div
                   style={{
-                    marginTop: "12px",
-                    padding: "14px 16px",
-                    background: "#f8eeeb",
-                    border: "1px solid #e6cec8",
-                    borderRadius: "15px",
-                    color: "#8d3d30",
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    lineHeight: 1.5,
-                    textAlign: "left",
+                    marginTop:
+                      "12px",
+
+                    padding:
+                      "14px 16px",
+
+                    background:
+                      "#f8eeeb",
+
+                    border:
+                      "1px solid #e6cec8",
+
+                    borderRadius:
+                      "15px",
+
+                    color:
+                      "#8d3d30",
+
+                    fontSize:
+                      "14px",
+
+                    fontWeight:
+                      600,
+
+                    lineHeight:
+                      1.5,
+
+                    textAlign:
+                      "left",
                   }}
                 >
                   {errorMessage}
@@ -846,17 +1750,601 @@ function App() {
               {isRecording && (
                 <p
                   style={{
-                    margin: "12px 0 0",
-                    color: "#7b8275",
-                    fontSize: "12px",
-                    textAlign: "center",
+                    margin:
+                      "12px 0 0",
+
+                    color:
+                      "#7b8275",
+
+                    fontSize:
+                      "12px",
+
+                    textAlign:
+                      "center",
                   }}
                 >
-                  Recording will stop automatically after 20 seconds.
+                  Recording will
+                  stop automatically
+                  after 20 seconds.
                 </p>
               )}
             </div>
           </div>
+        </section>
+
+        {/*
+         * ==================================================
+         * CATTLE REGISTRY TABLE
+         * BELOW CURRENT UI
+         * ==================================================
+         */}
+
+        <section
+          style={{
+            width:
+              "100%",
+
+            maxWidth:
+              "900px",
+
+            background:
+              "#fbfcf8",
+
+            border:
+              "1px solid #d8decf",
+
+            borderRadius:
+              "28px",
+
+            padding:
+              "24px",
+
+            boxShadow:
+              "0 18px 50px rgba(54, 68, 48, 0.07)",
+          }}
+        >
+          {/*
+           * TABLE HEADER
+           */}
+
+          <div
+            style={{
+              display:
+                "flex",
+
+              justifyContent:
+                "space-between",
+
+              alignItems:
+                "center",
+
+              gap:
+                "16px",
+
+              marginBottom:
+                "18px",
+            }}
+          >
+            <div>
+              <h2
+                style={{
+                  margin:
+                    0,
+
+                  color:
+                    "#10140e",
+
+                  fontFamily:
+                    "Georgia, 'Times New Roman', serif",
+
+                  fontSize:
+                    "25px",
+
+                  lineHeight:
+                    1.1,
+                }}
+              >
+                Cattle Registry
+              </h2>
+
+              <p
+                style={{
+                  margin:
+                    "6px 0 0",
+
+                  color:
+                    "#747d6e",
+
+                  fontSize:
+                    "13px",
+                }}
+              >
+                Showing{" "}
+                {
+                  visibleCattle.length
+                }{" "}
+                of{" "}
+                {
+                  cattle.length
+                }{" "}
+                {cattle.length ===
+                1
+                  ? "registration"
+                  : "registrations"}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={
+                loadCattle
+              }
+              disabled={
+                isLoadingCattle
+              }
+              style={{
+                border:
+                  "1px solid #cdd7c6",
+
+                background:
+                  "#e8eee1",
+
+                color:
+                  "#315a31",
+
+                borderRadius:
+                  "12px",
+
+                padding:
+                  "10px 15px",
+
+                fontSize:
+                  "13px",
+
+                fontWeight:
+                  700,
+
+                cursor:
+                  isLoadingCattle
+                    ? "default"
+                    : "pointer",
+
+                opacity:
+                  isLoadingCattle
+                    ? 0.65
+                    : 1,
+              }}
+            >
+              {isLoadingCattle
+                ? "Loading..."
+                : "Refresh"}
+            </button>
+          </div>
+
+          {/*
+           * TABLE ERROR
+           */}
+
+          {cattleError && (
+            <div
+              style={{
+                padding:
+                  "12px 14px",
+
+                marginBottom:
+                  "14px",
+
+                background:
+                  "#f8eeeb",
+
+                border:
+                  "1px solid #e6cec8",
+
+                borderRadius:
+                  "12px",
+
+                color:
+                  "#8d3d30",
+
+                fontSize:
+                  "13px",
+
+                fontWeight:
+                  600,
+              }}
+            >
+              {cattleError}
+            </div>
+          )}
+
+          {/*
+           * FIRST LOAD
+           */}
+
+          {isLoadingCattle &&
+          cattle.length ===
+            0 ? (
+            <div
+              style={{
+                minHeight:
+                  "120px",
+
+                display:
+                  "flex",
+
+                flexDirection:
+                  "column",
+
+                alignItems:
+                  "center",
+
+                justifyContent:
+                  "center",
+
+                color:
+                  "#747d6e",
+
+                fontSize:
+                  "14px",
+              }}
+            >
+              <div
+                style={{
+                  width:
+                    "34px",
+
+                  height:
+                    "34px",
+
+                  borderRadius:
+                    "50%",
+
+                  border:
+                    "4px solid #dfe6d8",
+
+                  borderTopColor:
+                    "#315a31",
+
+                  marginBottom:
+                    "12px",
+
+                  animation:
+                    "loadingSpin 0.8s linear infinite",
+                }}
+              />
+
+              Loading cattle
+              records...
+            </div>
+          ) : cattle.length ===
+            0 ? (
+            <div
+              style={{
+                padding:
+                  "34px 18px",
+
+                textAlign:
+                  "center",
+
+                color:
+                  "#747d6e",
+
+                fontSize:
+                  "14px",
+
+                border:
+                  "1px dashed #d8decf",
+
+                borderRadius:
+                  "16px",
+              }}
+            >
+              No cattle
+              registrations yet.
+            </div>
+          ) : (
+            /*
+             * TABLE
+             */
+
+            <div
+              style={{
+                width:
+                  "100%",
+
+                overflowX:
+                  "auto",
+
+                WebkitOverflowScrolling:
+                  "touch",
+
+                border:
+                  "1px solid #e0e4d9",
+
+                borderRadius:
+                  "16px",
+              }}
+            >
+              <table
+                style={{
+                  width:
+                    "100%",
+
+                  tableLayout:
+                    "fixed",
+
+                  borderCollapse:
+                    "collapse",
+
+                  background:
+                    "#ffffff",
+                }}
+              >
+                <thead>
+                  <tr
+                    style={{
+                      background:
+                        "#f1f4eb",
+                    }}
+                  >
+                    <th
+                      style={{
+                        width:
+                          "52px",
+
+                        padding:
+                          "13px 10px",
+
+                        textAlign:
+                          "left",
+
+                        color:
+                          "#65705f",
+
+                        fontSize:
+                          "11px",
+
+                        fontWeight:
+                          800,
+
+                        letterSpacing:
+                          "0.7px",
+
+                        textTransform:
+                          "uppercase",
+
+                        borderBottom:
+                          "1px solid #dce2d4",
+                      }}
+                    >
+                      ID
+                    </th>
+
+                    <th
+                      style={{
+                        padding:
+                          "13px 14px",
+
+                        textAlign:
+                          "left",
+
+                        color:
+                          "#65705f",
+
+                        fontSize:
+                          "11px",
+
+                        fontWeight:
+                          800,
+
+                        letterSpacing:
+                          "0.7px",
+
+                        textTransform:
+                          "uppercase",
+
+                        borderBottom:
+                          "1px solid #dce2d4",
+                      }}
+                    >
+                      Cow name
+                    </th>
+
+                    <th
+                      style={{
+                        padding:
+                          "13px 14px",
+
+                        textAlign:
+                          "left",
+
+                        color:
+                          "#65705f",
+
+                        fontSize:
+                          "11px",
+
+                        fontWeight:
+                          800,
+
+                        letterSpacing:
+                          "0.7px",
+
+                        textTransform:
+                          "uppercase",
+
+                        borderBottom:
+                          "1px solid #dce2d4",
+                      }}
+                    >
+                      Last heat date
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {visibleCattle.map(
+                    (cow) => {
+                      const isRecentRecord =
+                        cow.id ===
+                        recentRecordId;
+
+                      return (
+                        <tr
+                          key={
+                            cow.id
+                          }
+                          style={{
+                            background:
+                              isRecentRecord
+                                ? "#b42318"
+                                : "#ffffff",
+                          }}
+                        >
+                        <td
+                          style={{
+                            width:
+                              "52px",
+
+                            padding:
+                              "14px 10px",
+
+                            borderBottom:
+                              isRecentRecord
+                                ? "1px solid rgba(255, 255, 255, 0.28)"
+                                : "1px solid #e8ebe3",
+
+                            color:
+                              isRecentRecord
+                                ? "#ffffff"
+                                : "#747d6e",
+
+                            fontSize:
+                              "13px",
+
+                            fontWeight:
+                              isRecentRecord
+                                ? 800
+                                : 600,
+
+                            whiteSpace:
+                              "nowrap",
+                          }}
+                        >
+                          {
+                            cow.id
+                          }
+                        </td>
+
+                        <td
+                          style={{
+                            position:
+                              "relative",
+
+                            padding:
+                              "14px 48px 14px 14px",
+
+                            borderBottom:
+                              isRecentRecord
+                                ? "1px solid rgba(255, 255, 255, 0.28)"
+                                : "1px solid #e8ebe3",
+
+                            color:
+                              isRecentRecord
+                                ? "#ffffff"
+                                : "#263222",
+
+                            fontSize:
+                              "14px",
+
+                            fontWeight:
+                              isRecentRecord
+                                ? 800
+                                : 700,
+
+                            overflowWrap:
+                              "anywhere",
+                          }}
+                        >
+                          {isRecentRecord && (
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                position:
+                                  "absolute",
+
+                                right:
+                                  "12px",
+
+                                top:
+                                  "50%",
+
+                                transform:
+                                  "translateY(-50%)",
+
+                                fontSize:
+                                  "26px",
+
+                                lineHeight:
+                                  1,
+
+                                animation:
+                                  "handFloat 1.5s ease-in-out infinite",
+
+                                pointerEvents:
+                                  "none",
+
+                                userSelect:
+                                  "none",
+                              }}
+                            >
+                              👉
+                            </span>
+                          )}
+
+                          {
+                            cow.name
+                          }
+                        </td>
+
+                        <td
+                          style={{
+                            padding:
+                              "14px",
+
+                            borderBottom:
+                              isRecentRecord
+                                ? "1px solid rgba(255, 255, 255, 0.28)"
+                                : "1px solid #e8ebe3",
+
+                            color:
+                              isRecentRecord
+                                ? "#ffffff"
+                                : "#263222",
+
+                            fontSize:
+                              "14px",
+
+                            fontWeight:
+                              isRecentRecord
+                                ? 700
+                                : 500,
+                          }}
+                        >
+                          {
+                            formatHeatDate(
+                              cow.last_heat_date,
+                            )
+                          }
+                        </td>
+                        </tr>
+                      );
+                    },
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       </main>
     </>

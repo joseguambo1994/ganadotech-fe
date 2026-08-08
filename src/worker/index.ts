@@ -80,4 +80,33 @@ app.post("/api/audio", async (c) => {
 	}
 });
 
+app.get("/api/cattle", async (c) => {
+  try {
+    const response = await fetch(
+      "https://gappnado-speech-to-text.jlguambo1980.workers.dev/cattle",
+    );
+
+    const body = await response.text();
+
+    return new Response(body, {
+      status: response.status,
+      headers: {
+        "Content-Type":
+          response.headers.get("Content-Type") ||
+          "application/json",
+      },
+    });
+  } catch (error) {
+    console.error("Cattle read error:", error);
+
+    return c.json(
+      {
+        success: false,
+        error: "Could not load cattle records",
+      },
+      500,
+    );
+  }
+});
+
 export default app;
