@@ -21,6 +21,7 @@ type ApiResponse = {
 
 function App() {
   const [isRecording, setIsRecording] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const [status, setStatus] = useState("");
   const [statusType, setStatusType] =
@@ -55,6 +56,14 @@ function App() {
     return () => {
       clearTimeout(instructionTimer);
       clearTimeout(microphoneTimer);
+
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      streamRef.current
+        ?.getTracks()
+        .forEach((track) => track.stop());
     };
   }, []);
 
@@ -171,7 +180,7 @@ function App() {
       response.missing_field === "name"
     ) {
       return (
-        "I couldn't identify the cattle name. " +
+        "Cow name missing. " +
         "Please try again and clearly say the animal's name."
       );
     }
@@ -181,7 +190,7 @@ function App() {
       "last_heat_date"
     ) {
       return (
-        "I couldn't identify the last heat date. " +
+        "Last heat date missing. " +
         "Please try again and include the complete date."
       );
     }
@@ -205,6 +214,8 @@ function App() {
   const uploadAudio = async (
     audioBlob: Blob,
   ) => {
+    setIsLoading(true);
+
     try {
       setErrorMessage("");
 
@@ -236,16 +247,6 @@ function App() {
        * ------------------------------------------------
        * HANDLE DIRECT 400
        * ------------------------------------------------
-       *
-       * Worker returns:
-       *
-       * HTTP 400
-       * {
-       *   success: false,
-       *   error: "Cow name missing",
-       *   missing_field: "name"
-       * }
-       *
        */
 
       if (response.status === 400) {
@@ -263,17 +264,6 @@ function App() {
        * ------------------------------------------------
        * HANDLE 400 WRAPPED BY YOUR HONO PROXY
        * ------------------------------------------------
-       *
-       * Your proxy may return:
-       *
-       * HTTP 502
-       *
-       * {
-       *   error: "Speech-to-text request failed",
-       *   status: 400,
-       *   details: "{...original Worker JSON...}"
-       * }
-       *
        */
 
       if (
@@ -305,9 +295,7 @@ function App() {
         return;
       }
 
-      /*
-       * OTHER HTTP ERRORS
-       */
+      /* OTHER HTTP ERRORS */
 
       if (!response.ok) {
         console.error(
@@ -330,9 +318,7 @@ function App() {
         return;
       }
 
-      /*
-       * SUCCESS
-       */
+      /* SUCCESS */
 
       console.log(
         "Speech response:",
@@ -344,7 +330,6 @@ function App() {
       );
 
       setStatusType("success");
-
       setErrorMessage("");
     } catch (error) {
       console.error(
@@ -361,6 +346,10 @@ function App() {
       setErrorMessage(
         "We could not connect to the service. Please try again.",
       );
+    } finally {
+      // Loading stays visible for the entire backend request
+      // and disappears only after the response/error is handled.
+      setIsLoading(false);
     }
   };
 
@@ -407,34 +396,34 @@ function App() {
             margin: 0;
           }
 
-          @keyframes fingerSlide {
+          @keyframes handFloat {
             0%,
             100% {
-              transform: translateX(10px);
+              transform: translateY(4px) rotate(-7deg);
             }
 
             50% {
-              transform: translateX(-8px);
+              transform: translateY(-10px) rotate(-2deg);
             }
           }
 
           @keyframes micPulse {
             0% {
               box-shadow:
-                0 0 0 0 rgba(66, 105, 60, 0.18),
-                0 8px 22px rgba(45, 62, 40, 0.10);
+                0 0 0 0 rgba(66, 105, 60, 0.20),
+                0 10px 26px rgba(45, 62, 40, 0.12);
             }
 
             70% {
               box-shadow:
-                0 0 0 15px rgba(66, 105, 60, 0),
-                0 8px 22px rgba(45, 62, 40, 0.10);
+                0 0 0 20px rgba(66, 105, 60, 0),
+                0 10px 26px rgba(45, 62, 40, 0.12);
             }
 
             100% {
               box-shadow:
                 0 0 0 0 rgba(66, 105, 60, 0),
-                0 8px 22px rgba(45, 62, 40, 0.10);
+                0 10px 26px rgba(45, 62, 40, 0.12);
             }
           }
 
@@ -445,7 +434,23 @@ function App() {
             }
 
             50% {
-              transform: scale(1.035);
+              transform: scale(1.04);
+            }
+          }
+
+          @keyframes loadingSpin {
+            to {
+              transform: rotate(360deg);
+            }
+          }
+
+          @keyframes loadingFade {
+            from {
+              opacity: 0;
+            }
+
+            to {
+              opacity: 1;
             }
           }
 
@@ -458,14 +463,10 @@ function App() {
       <main
         style={{
           minHeight: "100vh",
-
           background: "#eef2e8",
-
           padding: "18px",
-
           fontFamily:
             "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
@@ -475,48 +476,36 @@ function App() {
           style={{
             width: "100%",
             maxWidth: "500px",
-
             background: "#fbfcf8",
-
-            border:
-              "1px solid #d8decf",
-
+            border: "1px solid #d8decf",
             borderRadius: "36px",
-
-            padding:
-              "26px 24px 32px",
-
+            padding: "24px 24px 30px",
             boxShadow:
               "0 18px 50px rgba(54, 68, 48, 0.07)",
+            overflow: "hidden",
           }}
         >
-          {/* HEADER */}
-
+          {/* HEADER — loader never covers this area */}
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "16px",
-
-              marginBottom: "32px",
+              gap: "18px",
+              marginBottom: "24px",
+              position: "relative",
+              zIndex: 30,
             }}
           >
             <div
               style={{
-                width: "82px",
-                height: "82px",
-
-                borderRadius: "22px",
-
+                width: "108px",
+                height: "108px",
+                borderRadius: "26px",
                 background: "#eef0eb",
-
-                border:
-                  "1px solid #e1e5db",
-
+                border: "1px solid #e1e5db",
                 display: "flex",
                 justifyContent: "center",
                 alignItems: "center",
-
                 flexShrink: 0,
               }}
             >
@@ -524,8 +513,8 @@ function App() {
                 src={logo}
                 alt="GanadoTech"
                 style={{
-                  width: "64px",
-                  height: "64px",
+                  width: "92px",
+                  height: "92px",
                   objectFit: "contain",
                 }}
               />
@@ -534,22 +523,16 @@ function App() {
             <div
               style={{
                 textAlign: "left",
+                minWidth: 0,
               }}
             >
               <div
                 style={{
                   color: "#315a31",
-
                   fontSize: "12px",
-
                   fontWeight: 800,
-
-                  letterSpacing:
-                    "1.8px",
-
-                  textTransform:
-                    "uppercase",
-
+                  letterSpacing: "1.8px",
+                  textTransform: "uppercase",
                   marginBottom: "5px",
                 }}
               >
@@ -559,16 +542,11 @@ function App() {
               <h1
                 style={{
                   margin: 0,
-
                   color: "#10140e",
-
                   fontFamily:
                     "Georgia, 'Times New Roman', serif",
-
                   fontSize: "31px",
-
                   lineHeight: 1.05,
-
                   fontWeight: 700,
                 }}
               >
@@ -579,378 +557,305 @@ function App() {
             </div>
           </div>
 
-          {/* INSTRUCTION CARD */}
-
+          {/* BODY — loading overlay covers everything in here */}
           <div
             style={{
-              border:
-                "1px solid #dce2d4",
-
-              background: "#f1f4eb",
-
-              borderRadius: "25px",
-
-              padding: "22px 20px",
-
-              opacity:
-                showInstruction
-                  ? 1
-                  : 0,
-
-              transform:
-                showInstruction
-                  ? "translateY(0)"
-                  : "translateY(12px)",
-
-              transition:
-                "opacity 0.8s ease, transform 0.8s ease",
+              position: "relative",
+              minHeight: "410px",
             }}
           >
-            <p
-              style={{
-                margin: 0,
-
-                color: "#172016",
-
-                fontSize: "18px",
-
-                lineHeight: 1.45,
-
-                fontWeight: 700,
-              }}
-            >
-              Say the cattle name and
-              the last heat date.
-            </p>
-
-            <div
-              style={{
-                width: "42px",
-                height: "2px",
-
-                background:
-                  "#cdd6c5",
-
-                margin:
-                  "17px auto",
-
-                borderRadius: "2px",
-              }}
-            />
-
-            <p
-              style={{
-                margin: 0,
-
-                color: "#65705f",
-
-                fontSize: "14px",
-
-                lineHeight: 1.55,
-              }}
-            >
-              Example: “Cow Martha
-              had her last heat on
-              August 7, 2026.”
-            </p>
-          </div>
-
-          {/* MICROPHONE CARD */}
-
-          <div
-            style={{
-              marginTop: "18px",
-
-              border:
-                "1px solid #dce2d4",
-
-              borderRadius: "25px",
-
-              background: "#fbfcf8",
-
-              padding:
-                "24px 20px 20px",
-
-              opacity:
-                showMicrophone
-                  ? 1
-                  : 0,
-
-              transform:
-                showMicrophone
-                  ? "translateY(0)"
-                  : "translateY(18px)",
-
-              transition:
-                "opacity 0.7s ease, transform 0.7s ease",
-
-              pointerEvents:
-                showMicrophone
-                  ? "auto"
-                  : "none",
-            }}
-          >
-            {!isRecording ? (
-              <>
+            {/* LOADING WHILE BACKEND RETURNS */}
+            {isLoading && (
+              <div
+                role="status"
+                aria-live="polite"
+                aria-label="Processing recording"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: 25,
+                  borderRadius: "26px",
+                  background: "rgba(251, 252, 248, 0.94)",
+                  backdropFilter: "blur(4px)",
+                  WebkitBackdropFilter: "blur(4px)",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  animation: "loadingFade 0.2s ease-out",
+                }}
+              >
                 <div
                   style={{
-                    display: "flex",
-
-                    justifyContent:
-                      "center",
-
-                    alignItems:
-                      "center",
-
-                    gap: "18px",
+                    width: "62px",
+                    height: "62px",
+                    borderRadius: "50%",
+                    border: "6px solid #dfe6d8",
+                    borderTopColor: "#315a31",
+                    animation: "loadingSpin 0.8s linear infinite",
                   }}
-                >
-                  {/* MICROPHONE */}
-
-                  <button
-                    onClick={
-                      startRecording
-                    }
-                    disabled={
-                      !showMicrophone
-                    }
-                    aria-label="Press to record"
-                    style={{
-                      width: "116px",
-                      height: "116px",
-
-                      borderRadius:
-                        "50%",
-
-                      border:
-                        "1px solid #cdd7c6",
-
-                      background:
-                        "#e8eee1",
-
-                      color:
-                        "#315a31",
-
-                      cursor:
-                        "pointer",
-
-                      fontSize:
-                        "46px",
-
-                      display: "flex",
-
-                      alignItems:
-                        "center",
-
-                      justifyContent:
-                        "center",
-
-                      animation:
-                        "micPulse 1.8s ease-out infinite",
-                    }}
-                  >
-                    🎙️
-                  </button>
-
-                  {/* MOVING FINGER */}
-
-                  <div
-                    style={{
-                      fontSize:
-                        "47px",
-
-                      lineHeight: 1,
-
-                      animation:
-                        "fingerSlide 0.85s ease-in-out infinite",
-
-                      userSelect:
-                        "none",
-                    }}
-                  >
-                    👈
-                  </div>
-                </div>
+                />
 
                 <p
                   style={{
-                    margin:
-                      "18px 0 0",
-
-                    color:
-                      "#263222",
-
-                    fontSize:
-                      "15px",
-
-                    fontWeight:
-                      700,
+                    margin: "18px 0 0",
+                    color: "#263222",
+                    fontSize: "16px",
+                    fontWeight: 800,
                   }}
                 >
-                  Press here to speak
+                  Processing audio...
                 </p>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={
-                    stopRecording
-                  }
-                  aria-label="Stop recording"
-                  style={{
-                    width: "116px",
-                    height: "116px",
-
-                    borderRadius:
-                      "50%",
-
-                    border:
-                      "1px solid #e1c9c3",
-
-                    background:
-                      "#f3e8e4",
-
-                    color:
-                      "#a34534",
-
-                    cursor:
-                      "pointer",
-
-                    fontSize:
-                      "42px",
-
-                    animation:
-                      "recordingPulse 1.2s ease-in-out infinite",
-                  }}
-                >
-                  ⏹
-                </button>
 
                 <p
                   style={{
-                    margin:
-                      "18px 0 0",
-
-                    color:
-                      "#8d3d30",
-
-                    fontSize:
-                      "15px",
-
-                    fontWeight:
-                      700,
+                    margin: "6px 0 0",
+                    color: "#747d6e",
+                    fontSize: "12px",
+                    lineHeight: 1.45,
                   }}
                 >
-                  Press to finish
+                  Reading the cattle name and last heat date.
                 </p>
-              </>
-            )}
-
-            {/* STATUS */}
-
-            <div
-              style={{
-                marginTop: "18px",
-
-                minHeight: "47px",
-
-                background:
-                  statusBackground(),
-
-                border:
-                  statusType ===
-                  "error"
-                    ? "1px solid #e4cbc5"
-                    : "1px solid #e0e4d9",
-
-                borderRadius: "15px",
-
-                padding:
-                  "12px 14px",
-
-                display: "flex",
-
-                alignItems:
-                  "center",
-
-                justifyContent:
-                  "center",
-              }}
-            >
-              <span
-                style={{
-                  color:
-                    statusColor(),
-
-                  fontSize: "14px",
-
-                  fontWeight: 600,
-
-                  lineHeight: 1.4,
-                }}
-              >
-                {status ||
-                  "The microphone is ready."}
-              </span>
-            </div>
-
-            {/* 400 / API ERROR MESSAGE */}
-
-            {errorMessage && (
-              <div
-                style={{
-                  marginTop: "12px",
-
-                  padding:
-                    "14px 16px",
-
-                  background:
-                    "#f8eeeb",
-
-                  border:
-                    "1px solid #e6cec8",
-
-                  borderRadius:
-                    "15px",
-
-                  color:
-                    "#8d3d30",
-
-                  fontSize:
-                    "14px",
-
-                  fontWeight:
-                    600,
-
-                  lineHeight:
-                    1.5,
-
-                  textAlign:
-                    "left",
-                }}
-              >
-                {errorMessage}
               </div>
             )}
 
-            {isRecording && (
+            {/* INSTRUCTION — smaller text, no different background */}
+            <div
+              style={{
+                padding: "4px 8px 8px",
+                textAlign: "center",
+                opacity: showInstruction ? 1 : 0,
+                transform: showInstruction
+                  ? "translateY(0)"
+                  : "translateY(12px)",
+                transition:
+                  "opacity 0.8s ease, transform 0.8s ease",
+              }}
+            >
               <p
                 style={{
-                  margin:
-                    "12px 0 0",
-
-                  color:
-                    "#7b8275",
-
-                  fontSize:
-                    "12px",
+                  margin: 0,
+                  color: "#172016",
+                  fontSize: "14px",
+                  lineHeight: 1.4,
+                  fontWeight: 700,
                 }}
               >
-                Recording will stop
-                automatically after 20
-                seconds.
+                Say the cattle name and the last heat date.
               </p>
-            )}
+
+              <p
+                style={{
+                  margin: "5px 0 0",
+                  color: "#65705f",
+                  fontSize: "12px",
+                  lineHeight: 1.45,
+                }}
+              >
+                Example: “Cow Martha had her last heat on August 7, 2026.”
+              </p>
+            </div>
+
+            {/* MICROPHONE AREA */}
+            <div
+              style={{
+                marginTop: "18px",
+                border: "1px solid #dce2d4",
+                borderRadius: "25px",
+                background: "#fbfcf8",
+                padding: "28px 20px 20px",
+                opacity: showMicrophone ? 1 : 0,
+                transform: showMicrophone
+                  ? "translateY(0)"
+                  : "translateY(18px)",
+                transition:
+                  "opacity 0.7s ease, transform 0.7s ease",
+                pointerEvents:
+                  showMicrophone && !isLoading
+                    ? "auto"
+                    : "none",
+              }}
+            >
+              {!isRecording ? (
+                <>
+                  {/* Mic is truly centered; hand floats independently */}
+                  <div
+                    style={{
+                      position: "relative",
+                      width: "100%",
+                      minHeight: "178px",
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                    <button
+                      onClick={startRecording}
+                      disabled={!showMicrophone || isLoading}
+                      aria-label="Press to record"
+                      style={{
+                        width: "156px",
+                        height: "156px",
+                        borderRadius: "50%",
+                        border: "1px solid #cdd7c6",
+                        background: "#e8eee1",
+                        color: "#315a31",
+                        cursor: "pointer",
+                        fontSize: "64px",
+                        lineHeight: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        animation:
+                          "micPulse 1.8s ease-out infinite",
+                      }}
+                    >
+                      🎙️
+                    </button>
+
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        position: "absolute",
+                        left: "calc(50% + 76px)",
+                        top: "70px",
+                        fontSize: "52px",
+                        lineHeight: 1,
+                        animation:
+                          "handFloat 1.5s ease-in-out infinite",
+                        userSelect: "none",
+                        pointerEvents: "none",
+                      }}
+                    >
+                      👈
+                    </div>
+                  </div>
+
+                  <p
+                    style={{
+                      margin: "14px 0 0",
+                      color: "#263222",
+                      fontSize: "15px",
+                      fontWeight: 700,
+                      textAlign: "center",
+                    }}
+                  >
+                    Press here to speak
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      width: "100%",
+                      minHeight: "178px",
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                    <button
+                      onClick={stopRecording}
+                      aria-label="Stop recording"
+                      style={{
+                        width: "156px",
+                        height: "156px",
+                        borderRadius: "50%",
+                        border: "1px solid #e1c9c3",
+                        background: "#f3e8e4",
+                        color: "#a34534",
+                        cursor: "pointer",
+                        fontSize: "54px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        animation:
+                          "recordingPulse 1.2s ease-in-out infinite",
+                      }}
+                    >
+                      ⏹
+                    </button>
+                  </div>
+
+                  <p
+                    style={{
+                      margin: "14px 0 0",
+                      color: "#8d3d30",
+                      fontSize: "15px",
+                      fontWeight: 700,
+                      textAlign: "center",
+                    }}
+                  >
+                    Press to finish
+                  </p>
+                </>
+              )}
+
+              {/* STATUS */}
+              <div
+                style={{
+                  marginTop: "18px",
+                  minHeight: "47px",
+                  background: statusBackground(),
+                  border:
+                    statusType === "error"
+                      ? "1px solid #e4cbc5"
+                      : "1px solid #e0e4d9",
+                  borderRadius: "15px",
+                  padding: "12px 14px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <span
+                  style={{
+                    color: statusColor(),
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    lineHeight: 1.4,
+                    textAlign: "center",
+                  }}
+                >
+                  {status ||
+                    "The microphone is ready."}
+                </span>
+              </div>
+
+              {/* 400 / API ERROR MESSAGE */}
+              {errorMessage && (
+                <div
+                  style={{
+                    marginTop: "12px",
+                    padding: "14px 16px",
+                    background: "#f8eeeb",
+                    border: "1px solid #e6cec8",
+                    borderRadius: "15px",
+                    color: "#8d3d30",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    lineHeight: 1.5,
+                    textAlign: "left",
+                  }}
+                >
+                  {errorMessage}
+                </div>
+              )}
+
+              {isRecording && (
+                <p
+                  style={{
+                    margin: "12px 0 0",
+                    color: "#7b8275",
+                    fontSize: "12px",
+                    textAlign: "center",
+                  }}
+                >
+                  Recording will stop automatically after 20 seconds.
+                </p>
+              )}
+            </div>
           </div>
         </section>
       </main>
